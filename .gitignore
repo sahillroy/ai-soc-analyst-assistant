@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+.conda/
+
+# Python cache
+.pytest_cache/
+
+# System files
+.DS_Store
+
+# Output data
+outputs/
+
+# IDE
+.vscode/

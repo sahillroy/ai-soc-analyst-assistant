@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AI-Powered SOC Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+    <div class="header">
+        <h1>AI-Powered SOC Command Center</h1>
+        <a href="/run" class="btn">Run Analysis Pipeline</a>
+    </div>
+
+    <div class="metrics">
+        <div class="card total">Total Alerts <br><span style="color: white; font-size: 2.5rem;">{{ total_alerts }}</span></div>
+        <div class="card high">High Severity <br><span style="font-size: 2.5rem;">{{ high }}</span></div>
+        <div class="card medium">Medium Severity <br><span style="font-size: 2.5rem;">{{ medium }}</span></div>
+        <div class="card low">Low Severity <br><span style="font-size: 2.5rem;">{{ low }}</span></div>
+    </div>
+
+    <div class="middle-row">
+        <div class="panel">
+            <h2>Alert Distribution</h2>
+            <div class="chart-container">
+                <canvas id="severityChart"></canvas>
+            </div>
+        </div>
+        <div class="panel">
+            <h2>Top Targeted Alert Types</h2>
+            <div class="chart-container">
+                <canvas id="typeChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="table-controls">
+        <div class="control-group">
+            <input type="text" id="searchInput" placeholder="Search IP, ID, or MITRE..." onkeyup="applyFilters()" style="width: 250px;">
+        </div>
+        <div class="control-group">
+            <label style="color: var(--text-muted); font-size: 0.9rem;">Filter By:</label>
+            <select id="severityFilter" onchange="applyFilters()">
+                <option value="all">All Severities</option>
+                <option value="High">High Only</option>
+                <option value="Medium">Medium Only</option>
+                <option value="Low">Low Only</option>
+            </select>
+            <select id="statusFilter" onchange="applyFilters()">
+                <option value="all">All Escalations</option>
+                <option value="Escalated to Tier-2">Escalated</option>
+                <option value="Under Review">Under Review</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="table-container">
+        <table id="alertTable">
+            <thead>
+                <tr>
+                    <th onclick="sortTable(0)">Incident ID ↕</th>
+                    <th onclick="sortTable(1)">IP Address ↕</th>
+                    <th onclick="sortTable(2)">Alert Type ↕</th>
+                    <th onclick="sortTable(3)">Severity ↕</th>
+                    <th onclick="sortTable(4)">Confidence ↕</th>
+                    <th>MITRE Tactic</th>
+                    <th>Escalation</th>
+                    <th>Action Taken</th>
+                </tr>
+            </thead>
+            <tbody id="alertTableBody">
+                {% for alert in alerts %}
+                <tr>
+                    <td>
+                        <span class="badge clickable-badge" 
+                        data-id="{{ alert.incident_id }}" 
+                        data-summary="{{ alert.incident_summary }}" 
+                        data-rec="{{ alert.recommended_action }}" 
+                        onclick="openModal(this)">
+                        {{ alert.incident_id }} ↗
+                    </span>
+                </td>
+                    <td style="font-family: monospace;">{{ alert.source_ip }}</td>
+                    <td class="alert-type-cell">{{ alert.alert_type }}</td>
+                    <td class="severity-cell sev-{{ alert.severity }}">{{ alert.severity }}</td>
+                    <td>{{ alert.confidence|round(1) }}%</td>
+                    <td><span style="color: var(--text-muted); font-size: 0.85rem;">{{ alert.mitre_technique }}</span></td>
+                    <td class="escalation-cell">{{ alert.escalation }}</td>
+                    <td style="color: var(--text-muted);">{{ alert.automation_result }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div id="incidentModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalIncidentId">INC-XXXXXX</h2>
+                <span class="close-btn" onclick="closeModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="modal-section">
+                    <h3>Intelligent Summary</h3>
+                    <p id="modalSummary">Loading summary...</p>
+                </div>
+                <div class="modal-section">
+                    <h3>Recommended SOC Action</h3>
+                    <p id="modalRecommendation" style="color: var(--medium-alert); font-weight: bold;">Loading recommendation...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. SEVERITY DOUGHNUT CHART ---
+        const sevCtx = document.getElementById('severityChart');
+        new Chart(sevCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['High', 'Medium', 'Low'],
+                datasets: [{
+                    data: [{{ high }}, {{ medium }}, {{ low }}],
+                    backgroundColor: ['#ef4444', '#f59e0b', '#10b981'],
+                    borderWidth: 0,
+                    hoverOffset: 4
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: '#f8fafc' } } } }
+        });
+
+        // --- 2. DYNAMIC BAR CHART (Reads HTML to generate data) ---
+        // This gathers the alert types directly from the table so you don't need backend changes
+        const typeCells = document.querySelectorAll('.alert-type-cell');
+        const typeCounts = {};
+        typeCells.forEach(cell => {
+            const type = cell.innerText;
+            typeCounts[type] = (typeCounts[type] || 0) + 1;
+        });
+
+        const typeCtx = document.getElementById('typeChart');
+        new Chart(typeCtx, {
+            type: 'bar',
+            data: {
+                labels: Object.keys(typeCounts),
+                datasets: [{
+                    label: 'Count',
+                    data: Object.values(typeCounts),
+                    backgroundColor: '#3b82f6',
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } },
+                    x: { grid: { display: false }, ticks: { color: '#94a3b8' } }
+                }
+            }
+        });
+
+        // --- 3. SEARCH AND FILTER ENGINE ---
+        function applyFilters() {
+            const searchVal = document.getElementById('searchInput').value.toLowerCase();
+            const sevFilter = document.getElementById('severityFilter').value;
+            const statusFilter = document.getElementById('statusFilter').value;
+            const rows = document.querySelectorAll('#alertTableBody tr');
+
+            rows.forEach(row => {
+                const textContent = row.innerText.toLowerCase();
+                const severity = row.querySelector('.severity-cell').innerText;
+                const escalation = row.querySelector('.escalation-cell').innerText;
+
+                const matchesSearch = textContent.includes(searchVal);
+                const matchesSev = (sevFilter === 'all' || severity === sevFilter);
+                const matchesStatus = (statusFilter === 'all' || escalation === statusFilter);
+
+                if (matchesSearch && matchesSev && matchesStatus) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+
+        // --- 4. CLICKABLE TABLE SORTING ---
+        function sortTable(columnIndex) {
+            const table = document.getElementById("alertTable");
+            let rows, switching, i, x, y, shouldSwitch, dir, switchcount = 0;
+            switching = true;
+            dir = "asc"; 
+            
+            while (switching) {
+                switching = false;
+                rows = table.rows;
+                for (i = 1; i < (rows.length - 1); i++) {
+                    shouldSwitch = false;
+                    x = rows[i].getElementsByTagName("TD")[columnIndex];
+                    y = rows[i + 1].getElementsByTagName("TD")[columnIndex];
+                    
+                    let xContent = x.innerText.toLowerCase();
+                    let yContent = y.innerText.toLowerCase();
+
+                    // Strip % signs for number sorting (Confidence column)
+                    if (xContent.includes('%')) {
+                        xContent = parseFloat(xContent);
+                        yContent = parseFloat(yContent);
+                    }
+
+                    if (dir == "asc") {
+                        if (xContent > yContent) { shouldSwitch = true; break; }
+                    } else if (dir == "desc") {
+                        if (xContent < yContent) { shouldSwitch = true; break; }
+                    }
+                }
+                if (shouldSwitch) {
+                    rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
+                    switching = true;
+                    switchcount ++;
+                } else {
+                    if (switchcount == 0 && dir == "asc") {
+                        dir = "desc";
+                        switching = true;
+                    }
+                }
+            }
+        }
+
+        // --- 5. MODAL LOGIC ---
+        function openModal(element) {
+            // Grab the hidden data from the badge that was clicked
+            const id = element.getAttribute('data-id');
+            const summary = element.getAttribute('data-summary');
+            const rec = element.getAttribute('data-rec');
+
+            // Inject the data into the modal window
+            document.getElementById('modalIncidentId').innerText = "Incident Report: " + id;
+            document.getElementById('modalSummary').innerText = summary;
+            document.getElementById('modalRecommendation').innerText = rec;
+
+            // Display the modal
+            document.getElementById('incidentModal').style.display = 'block';
+        }
+
+        function closeModal() {
+            document.getElementById('incidentModal').style.display = 'none';
+        }
+
+        // Close modal if the user clicks anywhere outside of the pop-up box
+        window.onclick = function(event) {
+            const modal = document.getElementById('incidentModal');
+            if (event.target == modal) {
+                modal.style.display = "none";
+            }
+        }
+
+    </script>
+
+</body>
+</html>

@@ -1,0 +1,103 @@
+Phase 1:
+We have generated logs using generated log.py (contamination =0.05)
+Created and trained an ml model using Random Forest in anomaly_detector.py
+In anomaly_detector.py we have also converted these generated log into the data format which is understood by ML model
+We ran model on small scale of data
+--------------------------------------------------------------------------------------------------------------------------------
+
+Phase 2:
+We have created rule_engine.py
+This is for Adding deterministic security rules like real SIEM systems 
+Rules say: This matches known attack behavior.
+Mainly for rule based detection
+Alerts are prioritized based on: Rule match, Behavioral anomaly, Context, Confidence score
+We Added Alert Type + Confidence Score
+
+This is the pipeline after phase 2 
+Logs
+  ↓
+Isolation Forest
+  ↓
+Rule Engine
+  ↓
+Severity
+  ↓
+Alert Type
+  ↓
+Confidence Score
+--------------------------------------------------------------------------------------------------------------------------------
+
+Phase 3:
+We build summarizer/incident_summary.py like a summary
+Converted technical alert data into: Human-readable report, Analyst-ready explanation, Clear recommendation instead of raw CSV rows.
+We are generating Alert Title, Description, Severity, Recommendation
+
+Pipeline after phase 3
+Logs
+   ↓
+Isolation Forest
+   ↓
+Rule Engine
+   ↓
+Severity + Alert Type
+   ↓
+Incident Summary
+   ↓
+Recommended Action
+--------------------------------------------------------------------------------------------------------------------------------
+
+Phase 4:
+We created a Web Dashboard that shows: Total Logs Processed, Total Alerts, High Severity Alerts, Suspicious IPs, Incident Summaries and
+Recommended Actions
+We used:
+Flask → Backend
+HTML + CSS → Frontend
+Chart.js → Visualization
+We added MITRE ATT&CK framework and playbook Actions
+We added Recommended Responses and status features like whether the alert is "New" or not
+Pipeline after Phase 4
+Logs
+   ↓
+Behavioral ML
+   ↓
+Rule Engine
+   ↓
+Severity + Confidence
+   ↓
+MITRE Mapping
+   ↓
+Playbook Recommendation
+   ↓
+Dashboard Visualization
+--------------------------------------------------------------------------------------------------------------------------------
+
+Phase 5:
+We added Run Analysis Control instead of retraining every refresh when we click button it performs analysis
+We added Incident ID System: Each alert now gets Incident ID (INC-AB12CD34)
+New feature = Auto Escalation Logic: We added SOC levels(Should this alert be handled by Tier-1 analysts, or escalated to Tier-2? 
+Based on Confidence and Severity)
+Response Simulation Engine
+Instead of only recommending action, We now simulate: Firewall rule created to block IP (192.168.1.250)
+Important: We are not actually blocking. We are simulating automation behavior
+Pipeline after Phase 5
+Logs
+  ↓
+Behavioral Detection
+  ↓
+Rule Intelligence
+  ↓
+Severity + Confidence
+  ↓
+MITRE Mapping
+  ↓
+Incident Summary
+  ↓
+Incident ID
+  ↓
+Status Assignment
+  ↓
+Escalation Logic
+  ↓
+Automation Simulation
+  ↓
+Dashboard Visualization

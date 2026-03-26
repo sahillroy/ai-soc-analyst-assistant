@@ -1,17 +1,11 @@
 import os
 import json
+from dotenv import load_dotenv
 from openai import OpenAI
 
-def generate_llm_summary(row) -> dict:
-    import os
-    from openai import OpenAI
+load_dotenv()
 
-    api_key = os.getenv("OPENAI_API_KEY")
-
-    if not api_key:
-        raise ValueError("OPENAI_API_KEY not found. Check your .env file.")
-
-    client = OpenAI(api_key=api_key)
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
 def _parse_mitre_field(mitre_raw) -> str:

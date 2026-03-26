@@ -1,4 +1,9 @@
-flask
+fastapi
+uvicorn[standard]
 pandas
 numpy
 scikit-learn
+openai>=1.0.0
+sqlalchemy
+requests
+python-dotenv

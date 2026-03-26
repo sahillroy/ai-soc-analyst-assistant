@@ -1,10 +1,15 @@
 from flask import Flask, render_template, redirect, url_for 
-from model.anomaly_detector import run_anomaly_detection
-from rules.rule_engine import apply_rules
-from summarizer.incident_summary import generate_summary
-from rules.mitre_mapping import map_to_mitre
-from response.playbook import recommend_response
-from response.automation import simulate_response
+from backend.detection.severity_engine import assign_severity_scored
+from backend.detection.rule_engine import assign_alert_type, apply_rules
+from backend.enrichment.ip_reputation import check_ip_reputation
+from backend.detection.ml.anomaly_detector import run_anomaly_detection
+from backend.enrichment.llm_summarizer import generate_llm_summary
+from backend.enrichment.incident_summary import generate_summary
+from backend.enrichment.mitre import map_to_mitre
+from backend.response.playbook import recommend_response
+from backend.response.automation import simulate_response
+from backend.detection.correlator import correlate_alerts
+from backend.core.database import engine
 import pandas as pd
 import os
 import uuid
@@ -24,17 +29,35 @@ def enrich_alerts(df):
         incident_ids = []
         escalations = []
         automation_logs = []
+        countries = []
+        ip_flags = []
         
         for _, row in df.iterrows(): # Go row by row in the DataFrame
-            desc, rec = generate_summary(row) #takes one log entry (row) and returns: desc → Description text, rec → Recommended action
-            summaries.append(desc)
-            recommendations.append(rec) # saving the generated values into lists
+            try:
+                llm_output = generate_llm_summary(row)
+            
+                summaries.append(llm_output.get("summary", "No summary"))
+                recommendations.append(llm_output.get("action", "No action"))
+            
+            except Exception:
+                # fallback (important)
+                desc, rec = generate_summary(row)
+                summaries.append(desc)
+                recommendations.append(rec)
             
             mitre_list.append(map_to_mitre(row['alert_type']))
             
             responses.append(recommend_response(row['severity']))
             
             incident_ids.append(generate_incident_id())
+            
+            intel = check_ip_reputation(row['source_ip'])
+
+            country = intel.get('country', 'Unknown')
+            is_suspicious = intel.get('is_suspicious', False)
+            
+            countries.append(country)
+            ip_flags.append(is_suspicious)
             
             # alert escalation logic. It decides Should this alert be handled by Tier-1 analysts, or escalated to Tier-2?
             if row['severity'] == "High" and row['confidence'] > 85:
@@ -56,6 +79,8 @@ def enrich_alerts(df):
         df['automation_result'] = automation_logs
         statuses = ["New"] * len(df)
         df['status'] = statuses #Every alert should automatically get status "New"
+        df['ip_country'] = countries
+        df['ip_suspicious'] = ip_flags
         
         return df
 
@@ -97,10 +122,23 @@ def run_analysis():
     run_anomaly_detection("data/logs.csv")
 
     df = pd.read_csv("outputs/suspicious_logs.csv")
+
+    # Step 1 — Rule detection
     df = apply_rules(df)
+    
+    # Step 2 — Risk scoring (NEW ENGINE)
+    df = assign_severity_scored(df)
+    
+    # Step 3 — Alert classification
+    df = assign_alert_type(df)
+    
+    df = correlate_alerts(df)
+    
+    # Step 4 — Enrichment (uses severity now)
     df = enrich_alerts(df)
 
-    df.to_csv("outputs/final_alerts.csv", index=False)
+
+    df.to_sql("alerts", engine, if_exists="replace", index=False)
 
     return redirect(url_for("dashboard"))
 

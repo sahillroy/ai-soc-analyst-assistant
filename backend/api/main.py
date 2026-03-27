@@ -3,6 +3,8 @@ load_dotenv()
 from fastapi import FastAPI, BackgroundTasks, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi import HTTPException
+from sqlalchemy import text
 import pandas as pd
 from typing import Optional
 from backend.core.database import engine
@@ -75,3 +77,21 @@ def get_stats():
         return df.to_dict(orient="records")
     except Exception:
         return []
+    
+@app.patch("/api/alerts/{incident_id}/status")
+def update_status(incident_id: str, body: dict):
+    allowed = {"New", "Investigating", "Resolved", "False Positive"}
+
+    new_status = body.get("status")
+
+    if new_status not in allowed:
+        raise HTTPException(status_code=400, detail="Invalid status")
+
+    with engine.connect() as conn:
+        conn.execute(
+            text("UPDATE alerts SET status = :status WHERE incident_id = :id"),
+            {"status": new_status, "id": incident_id}
+        )
+        conn.commit()
+
+    return {"updated": incident_id, "status": new_status}

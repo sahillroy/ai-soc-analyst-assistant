@@ -10,4 +10,12 @@ export const getStats = () => api.get('/api/stats');
 export const getStatus = () => api.get('/api/status');
 export const runAnalysis = () => api.post('/api/run-analysis');
 
+export const updateAlertStatus = (incidentId, status) => {
+  return fetch(`http://127.0.0.1:8000/api/alerts/${incidentId}/status`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+};
+
 export default api;

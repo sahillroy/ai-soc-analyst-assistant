@@ -8,6 +8,7 @@ from sqlalchemy import text
 import pandas as pd
 from typing import Optional
 from backend.core.database import engine
+from sqlalchemy import text
 from backend.detection.pipeline import run_pipeline
 
 
@@ -95,3 +96,15 @@ def update_status(incident_id: str, body: dict):
         conn.commit()
 
     return {"updated": incident_id, "status": new_status}
+
+
+@app.patch("/api/alerts/{incident_id}/notes")
+def update_notes(incident_id: str, body: dict):
+    notes = body.get("notes", "")
+    with engine.connect() as conn:
+        conn.execute(
+            text("UPDATE alerts SET notes = :notes WHERE incident_id = :id"),
+            {"notes": notes, "id": incident_id}
+        )
+        conn.commit()
+    return {"updated": incident_id}

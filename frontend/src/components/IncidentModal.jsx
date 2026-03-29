@@ -1,6 +1,7 @@
 import { X, ExternalLink } from 'lucide-react'
 import { updateAlertStatus } from '../api/client'
 import { useState } from 'react'
+import { updateAlertNotes } from '../api/client'
 
 function MitreTag({ mitre }) {
   // mitre_technique comes from DB as a JSON string — parse it safely
@@ -15,6 +16,15 @@ function MitreTag({ mitre }) {
   const tname = parsed.technique_name || '—'
   const tactic = parsed.tactic        || '—'
   const url   = parsed.mitre_url      || `https://attack.mitre.org/techniques/${tid}/`
+
+  const [notes, setNotes] = useState(alert?.notes || '')
+  const [notesSaved, setNotesSaved] = useState(false)
+  
+  const handleNotesSave = async () => {
+    await updateAlertNotes(alert.incident_id, notes)
+    setNotesSaved(true)
+    setTimeout(() => setNotesSaved(false), 2000)
+  }
 
   return (
     <div style={{
@@ -175,6 +185,33 @@ export default function IncidentModal({ alert, onClose }) {
           </div>
         </div>
       </div>
+
+      <div style={{ marginTop: 16 }}>
+        <div style={SLAB.label}>Analyst Notes</div>
+        <textarea
+          value={notes}
+          onChange={e => { setNotes(e.target.value); setNotesSaved(false) }}
+          placeholder="Add investigation notes..."
+          rows={3}
+          style={{
+            width: '100%', background: '#0f172a', color: '#f1f5f9',
+            border: '1px solid #334155', borderRadius: 6,
+            padding: '10px 12px', fontSize: 13, resize: 'vertical',
+            fontFamily: 'inherit', boxSizing: 'border-box',
+          }}
+        />
+        <button
+          onClick={handleNotesSave}
+          style={{
+            marginTop: 8, background: notesSaved ? '#10b981' : '#3b82f6',
+            color: '#fff', border: 'none', borderRadius: 6,
+            padding: '6px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+            transition: 'background 0.2s',
+          }}
+        >
+          {notesSaved ? '✓ Saved' : 'Save Notes'}
+        </button>
+      </div>  
     </div>
   )
 }

@@ -1,19 +1,21 @@
 import { useState, useEffect, useCallback } from 'react'
 import { RefreshCw, Shield, AlertTriangle } from 'lucide-react'
-import { getAlerts, getStats, getStatus, runAnalysis } from '../api/client'
+import { getAlerts, getStatus, runAnalysis } from '../api/client'
 import StatCard from '../components/StatCard'
 import SeverityChart from '../components/SeverityChart'
+import AlertTypeChart from '../components/AlertTypeChart'
 import AlertTable from '../components/AlertTable'
-import AlertTypeChart from "../components/AlertTypeChart";
-import CampaignView from "../components/CampaignView";
+import CampaignView from '../components/CampaignView'
+import TimelineChart from '../components/TimelineChart'
+import ThreatMap from '../components/ThreatMap'
 
 export default function Dashboard() {
-  const [alerts, setAlerts]         = useState([])
-  const [loading, setLoading]       = useState(false)
-  const [running, setRunning]       = useState(false)
-  const [error, setError]           = useState(null)
-  const [lastRun, setLastRun]       = useState(null)
-  const [view, setView]             = useState("alerts")
+  const [alerts, setAlerts]       = useState([])
+  const [loading, setLoading]     = useState(false)
+  const [running, setRunning]     = useState(false)
+  const [error, setError]         = useState(null)
+  const [lastRun, setLastRun]     = useState(null)
+  const [activeTab, setActiveTab] = useState('alerts')
 
   const fetchAlerts = useCallback(async () => {
     setLoading(true)
@@ -33,10 +35,8 @@ export default function Dashboard() {
     }
   }, [])
 
-  // Load alerts on mount
   useEffect(() => { fetchAlerts() }, [fetchAlerts])
 
-  // Poll status while pipeline is running
   useEffect(() => {
     if (!running) return
     const interval = setInterval(fetchAlerts, 3000)
@@ -47,7 +47,6 @@ export default function Dashboard() {
     try {
       setRunning(true)
       await runAnalysis()
-      // Wait a moment then start polling
       setTimeout(fetchAlerts, 1000)
     } catch (err) {
       setError('Failed to start pipeline.')
@@ -55,14 +54,18 @@ export default function Dashboard() {
     }
   }
 
-  // Compute stat counts from alerts array
   const count = (sev) => alerts.filter(a => a.severity === sev).length
+
   const topIPs = Object.entries(
     alerts.reduce((acc, a) => {
       acc[a.source_ip] = (acc[a.source_ip] || 0) + 1
       return acc
     }, {})
   ).sort((a, b) => b[1] - a[1]).slice(0, 5)
+
+  const campaignCount = [
+    ...new Set(alerts.map(a => a.campaign_id).filter(c => c && c !== 'standalone'))
+  ].length
 
   return (
     <div style={{ background: '#0f172a', minHeight: '100vh', padding: 28, color: '#f8fafc', fontFamily: 'Segoe UI, sans-serif' }}>
@@ -106,91 +109,77 @@ export default function Dashboard() {
 
       {/* Stat cards */}
       <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
-        <StatCard label="Total alerts"    value={alerts.length}   color="blue" />
-        <StatCard label="Critical"        value={count('Critical')} color="purple" />
-        <StatCard label="High"            value={count('High')}   color="red" />
-        <StatCard label="Medium"          value={count('Medium')} color="orange" />
-        <StatCard label="Low"             value={count('Low')}    color="green" />
+        <StatCard label="Total alerts" value={alerts.length}     color="blue" />
+        <StatCard label="Critical"     value={count('Critical')} color="purple" />
+        <StatCard label="High"         value={count('High')}     color="red" />
+        <StatCard label="Medium"       value={count('Medium')}   color="orange" />
+        <StatCard label="Low"          value={count('Low')}      color="green" />
       </div>
 
+      {/* Timeline */}
       <TimelineChart alerts={alerts} />
 
       {/* Charts row */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 24 }}>
         <SeverityChart alerts={alerts} />
         <AlertTypeChart alerts={alerts} />
-      
-                {/* Top suspicious IPs */}
-                <div style={{ background: '#1e293b', borderRadius: 8, padding: 20 }}>
-                  <h2 style={{ margin: '0 0 16px', fontSize: 16, color: '#f8fafc' }}>Top Source IPs</h2>
-                  {topIPs.length === 0
-                    ? <div style={{ color: '#475569' }}>No data yet</div>
-                    : topIPs.map(([ip, count]) => (
-                      <div key={ip} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                        <span style={{ fontFamily: 'monospace', color: '#94a3b8', fontSize: 13 }}>{ip}</span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <div style={{
-                            width: Math.max(30, (count / (topIPs[0]?.[1] || 1)) * 120),
-                            height: 6, background: '#ef4444', borderRadius: 3,
-                          }} />
-                          <span style={{ color: '#f8fafc', fontSize: 13, minWidth: 24 }}>{count}</span>
-                        </div>
-                      </div>
-                    ))
-                  }
+
+        {/* Top suspicious IPs */}
+        <div style={{ background: '#1e293b', borderRadius: 8, padding: 20 }}>
+          <h2 style={{ margin: '0 0 16px', fontSize: 16, color: '#f8fafc' }}>Top Source IPs</h2>
+          {topIPs.length === 0
+            ? <div style={{ color: '#475569' }}>No data yet</div>
+            : topIPs.map(([ip, cnt]) => (
+              <div key={ip} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <span style={{ fontFamily: 'monospace', color: '#94a3b8', fontSize: 13 }}>{ip}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{
+                    width: Math.max(30, (cnt / (topIPs[0]?.[1] || 1)) * 120),
+                    height: 6, background: '#ef4444', borderRadius: 3,
+                  }} />
+                  <span style={{ color: '#f8fafc', fontSize: 13, minWidth: 24 }}>{cnt}</span>
                 </div>
               </div>
-      
-            <div>
-        {/* Tab bar */}
+            ))
+          }
+        </div>
+      </div>
+
+      {/* Threat map */}
+      <ThreatMap alerts={alerts} />
+
+      {/* Tab bar */}
+      <div>
         <div style={{ display: 'flex', gap: 4, marginBottom: 16 }}>
           {['alerts', 'campaigns'].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               style={{
-                padding: '8px 18px',
-                borderRadius: 6,
-                border: 'none',
+                padding: '8px 18px', borderRadius: 6, border: 'none',
                 background: activeTab === tab ? '#3b82f6' : '#1e293b',
                 color: activeTab === tab ? '#fff' : '#94a3b8',
-                cursor: 'pointer',
-                fontSize: 14,
-                fontWeight: 600,
+                cursor: 'pointer', fontSize: 14, fontWeight: 600,
                 textTransform: 'capitalize',
+                display: 'flex', alignItems: 'center', gap: 6,
               }}
             >
               {tab}
-      
-        {/* Campaign count badge */}
-        {tab === 'campaigns' && (
-          <span style={{
-            marginLeft: 8,
-            background: '#ffffff22',
-            borderRadius: 10,
-            padding: '1px 7px',
-            fontSize: 12
-          }}>
-            {
-              [...new Set(
-                alerts
-                  .map(a => a.campaign_id)
-                  .filter(c => c && c !== 'standalone')
-              )].length
-            }
-          </span>
-        )}
-      </button>
-    ))}
-  </div>
+              {tab === 'campaigns' && (
+                <span style={{
+                  background: '#ffffff22', borderRadius: 10,
+                  padding: '1px 7px', fontSize: 12,
+                }}>
+                  {campaignCount}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
 
-  {/* Conditional views */}
-  {activeTab === 'alerts' && <AlertTable alerts={alerts} />}
-  {activeTab === 'campaigns' && <CampaignView alerts={alerts} />}
-</div>
-
-      {/* CSS for spinner */}
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-    </div>
+        {activeTab === 'alerts'    && <AlertTable alerts={alerts} />}
+        {activeTab === 'campaigns' && <CampaignView alerts={alerts} />}
+      </div>
+      </div>
   )
 }

@@ -18,4 +18,7 @@ export const updateAlertStatus = (incidentId, status) => {
   });
 };
 
+export const updateAlertNotes = (incident_id, notes) =>
+  api.patch(`/api/alerts/${incident_id}/notes`, { notes })
+
 export default api;

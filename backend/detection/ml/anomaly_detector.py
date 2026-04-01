@@ -1,7 +1,11 @@
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import IsolationForest
-import ipaddress  # Convert IP string → numeric 
+import ipaddress  # Convert IP string → numeric
+import os
+
+# Resolve project root relative to this file: backend/detection/ml/anomaly_detector.py
+_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ))
 
 
 def ip_to_int(ip):
@@ -26,7 +30,9 @@ def preprocess_data(df):
     return df
 
 
-def run_anomaly_detection(input_file):
+def run_anomaly_detection(input_file=None):
+    if input_file is None:
+        input_file = os.path.join(_PROJECT_ROOT, "data", "logs.csv")
     # Load data
     df = pd.read_csv(input_file)
 
@@ -70,9 +76,10 @@ def run_anomaly_detection(input_file):
     normal_logs = df[df['anomaly'] == 0]
     suspicious_logs = df[df['anomaly'] == 1]
 
-    # Export results
-    normal_logs.to_csv("outputs/normal_logs.csv", index=False)
-    suspicious_logs.to_csv("outputs/suspicious_logs.csv", index=False)
+    # Export results (using absolute paths so they work on any server)
+    os.makedirs(os.path.join(_PROJECT_ROOT, "outputs"), exist_ok=True)
+    normal_logs.to_csv(os.path.join(_PROJECT_ROOT, "outputs", "normal_logs.csv"), index=False)
+    suspicious_logs.to_csv(os.path.join(_PROJECT_ROOT, "outputs", "suspicious_logs.csv"), index=False)
     # Separated logs for SOC analyst review
     # index = False -> row labels (the index) are excluded when saving data to a file
 

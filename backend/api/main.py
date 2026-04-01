@@ -21,8 +21,10 @@ app.add_middleware(
         "https://ai-soc-analyst-assistant.vercel.app",
         "https://ai-soc-analyst-assistant-o6prk50hz-sahillroys-projects.vercel.app",
     ],
+    allow_origin_regex=r"https://.*\.vercel\.app",  # covers all preview deployment URLs
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_credentials=False,
 )
 
 
@@ -33,6 +35,10 @@ def _run_pipeline_task():
     pipeline_status["running"] = True
     try:
         df = run_pipeline()
+        
+        # Drop temporary ML-only feature columns so we don't try storing them in the presentation database
+        ml_cols = ['hour', 'source_ip_encoded', 'destination_ip_encoded', 'protocol_encoded']
+        df = df.drop(columns=[col for col in ml_cols if col in df.columns], errors='ignore')
         
         # In PostgreSQL, `to_sql(replace)` drops custom table definitions (e.g. SERIAL PRIMARY KEY)
         # So we clear the table first, then append the new AI analysis

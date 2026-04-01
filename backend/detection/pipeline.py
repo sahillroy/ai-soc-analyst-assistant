@@ -23,7 +23,13 @@ def generate_incident_id():
     return "INC-" + str(uuid.uuid4())[:8].upper()
 
 
-def run_pipeline(input_path="data/logs.csv"):
+import os as _os
+_PROJECT_ROOT = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", ".."))
+
+
+def run_pipeline(input_path=None):
+    if input_path is None:
+        input_path = _os.path.join(_PROJECT_ROOT, "data", "logs.csv")
     print("[+] Starting SOC pipeline...")
 
     # Step 1 — ML anomaly detection (returns full df with anomaly column)

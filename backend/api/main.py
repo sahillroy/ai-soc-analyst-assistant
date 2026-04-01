@@ -61,9 +61,16 @@ def _run_pipeline_task():
 @app.post("/api/run-analysis")
 def run_analysis(background_tasks: BackgroundTasks):
     if pipeline_status["running"]:
-        raise HTTPException(status_code=409, detail="Pipeline already running")
+        raise HTTPException(status_code=409, detail=f"Pipeline already running (started {pipeline_status.get('last_run', 'unknown')}). POST /api/reset-status to clear.")
     background_tasks.add_task(_run_pipeline_task)
     return {"status": "started", "message": "Pipeline running in background"}
+
+
+@app.post("/api/reset-status")
+def reset_status():
+    """Force-clear the pipeline running flag. Use if a run got stuck."""
+    pipeline_status["running"] = False
+    return {"status": "reset", "message": "Pipeline status cleared"}
 
 
 @app.get("/api/status")

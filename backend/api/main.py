@@ -15,10 +15,16 @@ app = FastAPI(title="SOC Analyst API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://ai-soc-analyst-assistant.vercel.app",
+        "https://ai-soc-analyst-assistant-o6prk50hz-sahillroys-projects.vercel.app",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 pipeline_status = {"running": False, "last_run": None, "total_alerts": 0}
 

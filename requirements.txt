@@ -7,3 +7,5 @@ openai>=1.0.0
 sqlalchemy
 requests
 python-dotenv
+psycopg2-binary
+gunicorn

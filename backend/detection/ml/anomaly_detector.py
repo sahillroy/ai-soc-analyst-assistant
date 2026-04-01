@@ -80,3 +80,5 @@ def run_anomaly_detection(input_file):
     print(f"Normal logs: {len(normal_logs)}")
     print(f"Suspicious logs: {len(suspicious_logs)}")
     print(df.columns)
+    
+    return df

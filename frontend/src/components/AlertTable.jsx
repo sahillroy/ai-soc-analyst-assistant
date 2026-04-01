@@ -63,13 +63,17 @@ const exportCSV = () => {
 
   const csv = [headers.join(','), ...rows].join('\n')
 
-  const blob = new Blob([csv], { type: 'text/csv' })
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
 
   const link = document.createElement('a')
   link.href = url
   link.download = `soc-alerts-${new Date().toISOString().slice(0, 10)}.csv`
+  
+  // Required by some browsers: append link to document before clicking
+  document.body.appendChild(link)
   link.click()
+  document.body.removeChild(link)
 
   URL.revokeObjectURL(url)
 }

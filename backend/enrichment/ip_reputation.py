@@ -16,6 +16,7 @@ def is_private_ip(ip: str) -> bool:
         return False
 
 def check_ip_reputation(ip: str) -> dict:
+    # Short-circuit for private/internal IPs — no network call needed
     if is_private_ip(ip):
         return {
             'country': 'Internal',
@@ -24,11 +25,8 @@ def check_ip_reputation(ip: str) -> dict:
             'flags': ['private_ip']
         }
 
-
-# Free tier: AbuseIPDB or GreyNoise
-def check_ip_reputation(ip: str) -> dict:
+    # Public IP — query ip-api.com (free, no key required)
     try:
-        # Using ip-api.com (free, no key needed)
         response = requests.get(
             f"http://ip-api.com/json/{ip}?fields=status,country,isp,org,proxy,hosting",
             timeout=3
@@ -37,7 +35,7 @@ def check_ip_reputation(ip: str) -> dict:
         risk_flags = []
         if data.get('proxy'): risk_flags.append('proxy')
         if data.get('hosting'): risk_flags.append('hosting_provider')
-        
+
         return {
             'country': data.get('country', 'Unknown'),
             'isp': data.get('isp', 'Unknown'),
@@ -45,7 +43,7 @@ def check_ip_reputation(ip: str) -> dict:
             'flags': risk_flags
         }
     except Exception:
-        return {'country': 'Unknown', 'is_suspicious': False}
+        return {'country': 'Unknown', 'is_suspicious': False, 'flags': []}
 
 # For production: use AbuseIPDB API (free tier = 1000 checks/day)
 def check_abuseipdb(ip: str, api_key: str) -> dict:

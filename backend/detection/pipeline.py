@@ -88,6 +88,14 @@ def enrich_alerts(df):
     for i, (_, row) in enumerate(df.iterrows()):
         print(f"  Enriching row {i+1}/{total} — {row.get('source_ip', '?')} [{row.get('alert_type', '?')}]")
 
+        # ---- MITRE mapping (must come BEFORE LLM so the summary can reference it) ----
+        mitre = json.dumps(map_to_mitre(row['alert_type']))
+        mitre_list.append(mitre)
+
+        # Inject mitre into row so llm_summarizer can use it
+        row = row.copy()
+        row['mitre_technique'] = mitre
+
         # ---- LLM summary (only for High/Critical — gated inside llm_summarizer) ----
         try:
             llm_output = generate_llm_summary(row)
@@ -98,9 +106,6 @@ def enrich_alerts(df):
             desc, rec = generate_summary(row)
             summaries.append(desc)
             recommendations.append(rec)
-
-        # ---- MITRE mapping ----
-        mitre_list.append(json.dumps(map_to_mitre(row['alert_type'])))
 
         # ---- SOC playbook ----
         responses.append(recommend_response(row['severity']))

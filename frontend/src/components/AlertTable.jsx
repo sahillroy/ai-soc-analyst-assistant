@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import IncidentModal from './IncidentModal'
+import { exportReportCSV } from '../api/client'
 
 const SEV_COLOR = {
   Critical: '#8b5cf6', High: '#ef4444',
@@ -51,32 +52,6 @@ export default function AlertTable({ alerts }) {
     </th>
   )
 
-const exportCSV = () => {
-  const headers = [
-    'incident_id', 'source_ip', 'alert_type', 'severity',
-    'risk_score', 'confidence', 'campaign_id', 'escalation', 'timestamp'
-  ]
-
-  const rows = sorted.map(a =>
-    headers.map(h => `"${a[h] ?? ''}"`).join(',')
-  )
-
-  const csv = [headers.join(','), ...rows].join('\n')
-
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `soc-alerts-${new Date().toISOString().slice(0, 10)}.csv`
-  
-  // Required by some browsers: append link to document before clicking
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-
-  URL.revokeObjectURL(url)
-}
 
 
   return (
@@ -126,14 +101,16 @@ const exportCSV = () => {
 
             {/* Export button */}
             <button
-              onClick={exportCSV}
+              onClick={exportReportCSV}
+              title="Download full AI-generated incident report (includes LLM summaries, MITRE, playbook actions)"
               style={{
-                background: '#1e293b', color: '#94a3b8', border: '1px solid #334155',
+                background: '#1e3a5f', color: '#60a5fa', border: '1px solid #3b82f6',
                 borderRadius: 6, padding: '8px 14px', cursor: 'pointer',
                 fontSize: 14, display: 'flex', alignItems: 'center', gap: 6,
+                fontWeight: 600,
               }}
             >
-              ↓ Export CSV
+              ↓ Export AI Report
             </button>
           </div>
 

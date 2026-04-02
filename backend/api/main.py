@@ -334,3 +334,78 @@ try:
     from backend.core.database import DATABASE_URL
 except ImportError:
     DATABASE_URL = os.getenv("DATABASE_URL", "")
+
+
+# ── Incident Report Endpoints ──────────────────────────────────────────────────
+
+@app.get("/api/report/{incident_id}")
+def get_incident_report(incident_id: str):
+    """Returns a structured AI-generated JSON report for one incident."""
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT * FROM alerts WHERE incident_id = :id"),
+            {"id": incident_id}
+        ).fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    data = dict(row._mapping)
+    return {
+        "incident_id":    data.get("incident_id"),
+        "summary":        data.get("incident_summary"),
+        "recommendation": data.get("recommended_action"),
+        "severity":       data.get("severity"),
+        "risk_score":     data.get("risk_score"),
+        "alert_type":     data.get("alert_type"),
+        "source_ip":      data.get("source_ip"),
+        "destination_ip": data.get("destination_ip"),
+        "timestamp":      str(data.get("timestamp", "")),
+        "mitre":          data.get("mitre_technique"),
+        "soc_playbook":   data.get("soc_playbook_action"),
+        "automation":     data.get("automation_result"),
+        "escalation":     data.get("escalation"),
+        "campaign_id":    data.get("campaign_id"),
+        "notes":          data.get("notes", ""),
+    }
+
+
+@app.get("/api/report/export/csv")
+def export_full_report_csv():
+    """Returns a rich CSV report of all alerts with all AI-generated fields."""
+    from fastapi.responses import Response
+
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text("SELECT * FROM alerts ORDER BY id DESC")).fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="No alerts found. Run Analysis first.")
+
+    columns = [
+        "incident_id", "timestamp", "source_ip", "destination_ip", "port", "protocol",
+        "alert_type", "severity", "risk_score", "confidence", "campaign_id",
+        "escalation", "status",
+        "incident_summary", "recommended_action", "soc_playbook_action",
+        "automation_result", "mitre_technique", "notes",
+    ]
+
+    def escape(val):
+        s = str(val) if val is not None else ""
+        return '"' + s.replace('"', '""') + '"'
+
+    header = ",".join(columns)
+    lines  = [header]
+    for row in rows:
+        d = dict(row._mapping)
+        lines.append(",".join(escape(d.get(c, "")) for c in columns))
+
+    csv_text = "\n".join(lines)
+
+    return Response(
+        content=csv_text,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=soc-ai-incident-report.csv"}
+    )

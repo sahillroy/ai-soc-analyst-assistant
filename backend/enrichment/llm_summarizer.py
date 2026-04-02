@@ -5,9 +5,11 @@ from openai import OpenAI
 
 load_dotenv()
 
+# Groq uses an OpenAI-compatible API — just change base_url and key name.
+# No extra library needed, openai package works directly with Groq.
 client = OpenAI(
     api_key=os.getenv("GROQ_API_KEY"),
-    base_url="https://api.groq.com/openai/v1"
+    base_url="https://api.groq.com/openai/v1",
 )
 
 
@@ -92,20 +94,21 @@ Timestamp      : {row.get('timestamp', 'Unknown')}"""
 
     try:
         response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",  # Groq's blazing fast, free open-source model
+            model="llama-3.3-70b-versatile",  # Groq: fast + free, supports JSON mode
             messages=[
                 {
                     "role": "system",
                     "content": (
                         "You are a cybersecurity SOC analyst. "
-                        "Always respond with valid JSON only. No markdown, no extra text."
+                        "Always respond with a valid json object only. "
+                        "No markdown, no code fences, no extra text."
                     ),
                 },
                 {"role": "user", "content": prompt},
             ],
             temperature=0.2,              # low temp = consistent, structured output
             max_tokens=300,
-            response_format={"type": "json_object"},  # forces JSON mode (gpt-4o-mini supports this)
+            # Note: response_format json_object is NOT supported by all Groq models
         )
 
         raw_text = response.choices[0].message.content

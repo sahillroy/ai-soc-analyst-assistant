@@ -20,14 +20,14 @@ export const updateAlertNotes = (incident_id, notes) =>
 export const getIncidentReport = (incident_id) =>
   api.get(`/api/report/${incident_id}`)
 
-// Downloads the full AI-generated incident report CSV from the backend
-// Includes LLM fields: incident_summary, recommended_action, soc_playbook, mitre, etc.
+// Downloads the full AI-generated incident report as a styled Excel file
+// Includes severity-colored rows, LLM summaries, MITRE, playbook actions, etc.
 export const exportReportCSV = () => {
   const base = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-  const url  = `${base}/api/report/export/csv`
+  const url  = `${base}/api/report/export/xlsx`
   const link = document.createElement('a')
   link.href  = url
-  link.download = 'soc-ai-incident-report.csv'
+  link.download = 'soc-ai-incident-report.xlsx'
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)

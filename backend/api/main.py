@@ -413,52 +413,69 @@ def export_full_report_csv():
 
 @app.get("/api/report/export/xlsx")
 def export_full_report_xlsx():
-    """Generates a professional styled Excel report with color-coded rows and AI summaries."""
-    import io
-    from fastapi.responses import StreamingResponse
-    from openpyxl import Workbook
-    from openpyxl.styles import (
-        PatternFill, Font, Alignment, Border, Side, GradientFill
-    )
-    from openpyxl.utils import get_column_letter
+    """
+    Generates a professional styled Excel report with:
+    - Severity-colored rows (Critical=purple, High=red, Medium=amber, Low=green)
+    - Bold headers with frozen top row
+    - Auto-sized columns
+    - Sheet 2: Summary statistics (severity + alert type breakdown)
 
+    FIXES vs previous version:
+    1. Uses Response(content=buf.getvalue()) instead of StreamingResponse(buf)
+       StreamingResponse reads lazily after function returns — BytesIO can be
+       GC'd before streaming completes, causing silent 500s.
+    2. Removed unused GradientFill import (causes ImportError on older openpyxl).
+    3. ORDER BY CAST(risk_score AS FLOAT) — risk_score stored as TEXT in some
+       old schemas sorts lexicographically ('9' > '77'), giving wrong order.
+    4. All None values from PostgreSQL NULL are safely handled before float().
+    """
+    import io
+    from fastapi.responses import Response
+    from openpyxl import Workbook
+    from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    from collections import Counter
+
+    # ── Fetch data ────────────────────────────────────────────────────────────
     try:
         with engine.connect() as conn:
-            rows = conn.execute(text("SELECT * FROM alerts ORDER BY risk_score DESC")).fetchall()
+            rows = conn.execute(text(
+                "SELECT * FROM alerts ORDER BY risk_score DESC"
+            )).fetchall()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"DB error: {e}")
 
     if not rows:
         raise HTTPException(status_code=404, detail="No alerts found. Run Analysis first.")
 
-    # ── Colour palette ────────────────────────────────────────────────────────
+    data_dicts = [dict(r._mapping) for r in rows]
+
+    # ── Style palette ─────────────────────────────────────────────────────────
     SEV_FILL = {
-        "Critical": PatternFill("solid", fgColor="3B0764"),   # deep purple
-        "High":     PatternFill("solid", fgColor="7F1D1D"),   # deep red
-        "Medium":   PatternFill("solid", fgColor="78350F"),   # amber/brown
-        "Low":      PatternFill("solid", fgColor="14532D"),   # dark green
-        "Normal":   PatternFill("solid", fgColor="1E293B"),   # slate
+        "Critical": PatternFill("solid", fgColor="3B0764"),
+        "High":     PatternFill("solid", fgColor="7F1D1D"),
+        "Medium":   PatternFill("solid", fgColor="78350F"),
+        "Low":      PatternFill("solid", fgColor="14532D"),
+        "Normal":   PatternFill("solid", fgColor="1E293B"),
     }
     SEV_FONT = {
-        "Critical": Font(color="E9D5FF", bold=True),
-        "High":     Font(color="FECACA", bold=True),
-        "Medium":   Font(color="FDE68A"),
-        "Low":      Font(color="BBF7D0"),
-        "Normal":   Font(color="94A3B8"),
+        "Critical": Font(color="E9D5FF", bold=True, size=9),
+        "High":     Font(color="FECACA", bold=True, size=9),
+        "Medium":   Font(color="FDE68A", size=9),
+        "Low":      Font(color="BBF7D0", size=9),
+        "Normal":   Font(color="94A3B8", size=9),
     }
-    HEADER_FILL  = PatternFill("solid", fgColor="0F172A")   # near-black
-    HEADER_FONT  = Font(color="60A5FA", bold=True, size=10) # blue
-    ALT_FILL     = PatternFill("solid", fgColor="1E293B")   # dark blue-grey
+    HEADER_FILL  = PatternFill("solid", fgColor="0F172A")
+    HEADER_FONT  = Font(color="60A5FA", bold=True, size=10)
     BASE_FILL    = PatternFill("solid", fgColor="0F172A")
+    ALT_FILL     = PatternFill("solid", fgColor="1E293B")
     BASE_FONT    = Font(color="CBD5E1", size=9)
     ALT_FONT     = Font(color="94A3B8", size=9)
-    THIN_BORDER  = Border(
-        bottom=Side(border_style="thin", color="334155"),
-    )
-    CENTER  = Alignment(horizontal="center", vertical="center", wrap_text=False)
-    WRAP    = Alignment(horizontal="left",   vertical="top",    wrap_text=True)
+    THIN_BORDER  = Border(bottom=Side(border_style="thin", color="334155"))
+    CENTER       = Alignment(horizontal="center", vertical="center", wrap_text=False)
+    WRAP         = Alignment(horizontal="left",   vertical="top",    wrap_text=True)
 
-    # ── Columns to export ────────────────────────────────────────────────────
+    # ── Column definitions: (header label, db field, column width) ────────────
     COLS = [
         ("Incident ID",        "incident_id",         22),
         ("Timestamp",          "timestamp",            20),
@@ -466,13 +483,13 @@ def export_full_report_xlsx():
         ("Destination",        "destination_ip",       16),
         ("Port",               "port",                  7),
         ("Protocol",           "protocol",              9),
-        ("Alert Type",         "alert_type",           22),
+        ("Alert Type",         "alert_type",           26),
         ("Severity",           "severity",             11),
         ("Risk Score",         "risk_score",           11),
         ("Confidence %",       "confidence",           13),
         ("Campaign",           "campaign_id",          14),
         ("Escalation",         "escalation",           28),
-        ("Status",             "status",               11),
+        ("Status",             "status",               14),
         ("AI Summary",         "incident_summary",     55),
         ("Recommended Action", "recommended_action",   45),
         ("SOC Playbook",       "soc_playbook_action",  35),
@@ -480,6 +497,12 @@ def export_full_report_xlsx():
         ("MITRE Technique",    "mitre_technique",      30),
         ("Analyst Notes",      "notes",                30),
     ]
+
+    WRAP_FIELDS = {
+        "incident_summary", "recommended_action",
+        "soc_playbook_action", "automation_result", "notes",
+    }
+    FLOAT_FIELDS = {"risk_score", "confidence"}
 
     wb = Workbook()
 
@@ -500,107 +523,103 @@ def export_full_report_xlsx():
         ws.column_dimensions[get_column_letter(col_idx)].width = width
 
     ws.row_dimensions[1].height = 22
-    ws.freeze_panes = "A2"
+    ws.freeze_panes = "A2"   # freeze header row
 
     # Data rows
-    for row_idx, row in enumerate(rows, start=2):
-        d   = dict(row._mapping)
-        sev = d.get("severity", "Normal") or "Normal"
+    for row_idx, d in enumerate(data_dicts, start=2):
+        sev      = d.get("severity") or "Normal"
         row_fill = SEV_FILL.get(sev, BASE_FILL)
         row_font = SEV_FONT.get(sev, BASE_FONT)
 
-        # alternate faint shade for non-severity rows
+        # Alternate faint shade for Medium/Low/Normal rows
         if sev not in ("Critical", "High"):
             row_fill = ALT_FILL if row_idx % 2 == 0 else BASE_FILL
             row_font = ALT_FONT  if row_idx % 2 == 0 else BASE_FONT
 
+        has_wrap = False
         for col_idx, (_, field, _) in enumerate(COLS, start=1):
             val  = d.get(field)
+            # Safe None handling — PostgreSQL NULLs come through as Python None
             disp = "" if val is None else str(val)
 
-            # round float fields for readability
-            if field in ("risk_score", "confidence"):
+            if field in FLOAT_FIELDS and val is not None:
                 try:
                     disp = f"{float(val):.1f}"
                 except (TypeError, ValueError):
                     pass
 
-            cell = ws.cell(row=row_idx, column=col_idx, value=disp)
+            cell        = ws.cell(row=row_idx, column=col_idx, value=disp)
             cell.fill   = row_fill
             cell.font   = row_font
             cell.border = THIN_BORDER
 
-            # wrap long AI text fields
-            if field in ("incident_summary", "recommended_action",
-                         "soc_playbook_action", "automation_result", "notes"):
+            if field in WRAP_FIELDS:
                 cell.alignment = WRAP
-                ws.row_dimensions[row_idx].height = 60
+                has_wrap = True
             else:
                 cell.alignment = CENTER
+
+        ws.row_dimensions[row_idx].height = 65 if has_wrap else 16
 
     # ════════════════════════════════════════════════════════════════════════
     # Sheet 2 — Summary Statistics
     # ════════════════════════════════════════════════════════════════════════
     ws2 = wb.create_sheet("Summary")
     ws2.sheet_view.showGridLines = False
+    ws2.column_dimensions["A"].width = 32
+    ws2.column_dimensions["B"].width = 14
 
-    data_dicts = [dict(r._mapping) for r in rows]
-
-    from collections import Counter
-    sev_counts  = Counter(d.get("severity","Normal") for d in data_dicts)
-    type_counts = Counter(d.get("alert_type","Unknown") for d in data_dicts)
-    total       = len(data_dicts)
+    def _s2_cell(row, col, value, font=None, fill=None, align=None):
+        c = ws2.cell(row=row, column=col, value=value)
+        if font:  c.font      = font
+        if fill:  c.fill      = fill
+        if align: c.alignment = align
+        c.border = THIN_BORDER
+        return c
 
     # Title
-    title_cell = ws2.cell(row=1, column=1, value="SOC AI Analyst — Incident Summary")
-    title_cell.font      = Font(color="60A5FA", bold=True, size=14)
-    title_cell.fill      = HEADER_FILL
-    title_cell.alignment = Alignment(horizontal="left", vertical="center")
+    _s2_cell(1, 1, "SOC AI Analyst — Incident Summary",
+             font=Font(color="60A5FA", bold=True, size=14),
+             fill=HEADER_FILL,
+             align=Alignment(horizontal="left", vertical="center"))
     ws2.row_dimensions[1].height = 28
-    ws2.column_dimensions["A"].width = 30
-    ws2.column_dimensions["B"].width = 20
 
-    ws2.cell(row=2, column=1, value=f"Total incidents analysed: {total}").font = Font(color="94A3B8", italic=True)
-    ws2.cell(row=2, column=1).fill = BASE_FILL
+    _s2_cell(2, 1, f"Total incidents analysed: {len(data_dicts)}",
+             font=Font(color="94A3B8", italic=True, size=10),
+             fill=BASE_FILL)
 
     # Severity breakdown
-    ws2.cell(row=4, column=1, value="Severity Breakdown").font = Font(color="60A5FA", bold=True)
-    ws2.cell(row=4, column=1).fill = HEADER_FILL
-    ws2.cell(row=4, column=2, value="Count").font = Font(color="60A5FA", bold=True)
-    ws2.cell(row=4, column=2).fill = HEADER_FILL
+    sev_counts  = Counter(d.get("severity") or "Normal" for d in data_dicts)
+    type_counts = Counter(d.get("alert_type") or "Unknown" for d in data_dicts)
+
+    _s2_cell(4, 1, "Severity", font=HEADER_FONT, fill=HEADER_FILL, align=CENTER)
+    _s2_cell(4, 2, "Count",    font=HEADER_FONT, fill=HEADER_FILL, align=CENTER)
 
     for i, sev in enumerate(["Critical", "High", "Medium", "Low", "Normal"], start=5):
-        cnt   = sev_counts.get(sev, 0)
-        c1    = ws2.cell(row=i, column=1, value=sev)
-        c2    = ws2.cell(row=i, column=2, value=cnt)
-        fill  = SEV_FILL.get(sev, BASE_FILL)
-        font  = SEV_FONT.get(sev, BASE_FONT)
-        for c in (c1, c2):
-            c.fill = fill
-            c.font = font
-            c.alignment = CENTER
+        cnt = sev_counts.get(sev, 0)
+        _s2_cell(i, 1, sev, font=SEV_FONT.get(sev, BASE_FONT),
+                 fill=SEV_FILL.get(sev, BASE_FILL), align=CENTER)
+        _s2_cell(i, 2, cnt, font=SEV_FONT.get(sev, BASE_FONT),
+                 fill=SEV_FILL.get(sev, BASE_FILL), align=CENTER)
 
-    # Alert type breakdown
-    ws2.cell(row=12, column=1, value="Top Alert Types").font = Font(color="60A5FA", bold=True)
-    ws2.cell(row=12, column=1).fill = HEADER_FILL
-    ws2.cell(row=12, column=2, value="Count").font = Font(color="60A5FA", bold=True)
-    ws2.cell(row=12, column=2).fill = HEADER_FILL
+    _s2_cell(11, 1, "Alert Type",  font=HEADER_FONT, fill=HEADER_FILL, align=CENTER)
+    _s2_cell(11, 2, "Count",       font=HEADER_FONT, fill=HEADER_FILL, align=CENTER)
 
-    for j, (atype, cnt) in enumerate(type_counts.most_common(10), start=13):
-        c1 = ws2.cell(row=j, column=1, value=atype)
-        c2 = ws2.cell(row=j, column=2, value=cnt)
+    for j, (atype, cnt) in enumerate(type_counts.most_common(10), start=12):
         fill = ALT_FILL if j % 2 == 0 else BASE_FILL
-        for c in (c1, c2):
-            c.fill = fill
-            c.font = BASE_FONT
+        _s2_cell(j, 1, atype, font=BASE_FONT, fill=fill, align=CENTER)
+        _s2_cell(j, 2, cnt,   font=BASE_FONT, fill=fill, align=CENTER)
 
-    # ── Stream workbook to response ──────────────────────────────────────────
+    # ── Serialize to bytes and return ─────────────────────────────────────────
+    # IMPORTANT: Use Response(content=buf.getvalue()), NOT StreamingResponse(buf).
+    # StreamingResponse reads the BytesIO lazily after this function returns,
+    # by which point Python may have GC'd the local buf — causing a silent 500.
     buf = io.BytesIO()
     wb.save(buf)
-    buf.seek(0)
+    xlsx_bytes = buf.getvalue()   # read all bytes NOW, while buf is still alive
 
-    return StreamingResponse(
-        buf,
+    return Response(
+        content=xlsx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=soc-ai-incident-report.xlsx"},
     )

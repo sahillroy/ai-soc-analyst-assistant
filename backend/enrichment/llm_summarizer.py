@@ -5,7 +5,10 @@ from openai import OpenAI
 
 load_dotenv()
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = OpenAI(
+    api_key=os.getenv("GROQ_API_KEY"),
+    base_url="https://api.groq.com/openai/v1"
+)
 
 
 def _parse_mitre_field(mitre_raw) -> str:
@@ -89,7 +92,7 @@ Timestamp      : {row.get('timestamp', 'Unknown')}"""
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",          # cheap + fast; swap to gpt-4o for higher quality
+            model="llama-3.1-8b-instant",  # Groq's blazing fast, free open-source model
             messages=[
                 {
                     "role": "system",

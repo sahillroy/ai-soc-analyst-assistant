@@ -8,7 +8,17 @@ const api = axios.create({
 export const getAlerts = (params = {}) => api.get('/api/alerts', { params });
 export const getStats = () => api.get('/api/stats');
 export const getStatus = () => api.get('/api/status');
-export const runAnalysis = () => api.post('/api/run-analysis');
+export const runAnalysis = (settings = {}) => api.post('/api/run-analysis', {}, { params: settings });
+
+export const uploadLogs = (file) => {
+  const form = new FormData()
+  form.append('file', file)
+  return api.post('/api/upload-logs', form, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+}
+
+export const loadSampleData = () => api.get('/api/sample-data')
 
 export const updateAlertStatus = (incidentId, status) => {
   return api.patch(`/api/alerts/${incidentId}/status`, { status });

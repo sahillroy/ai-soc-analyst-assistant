@@ -1,11 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import IsolationForest
-import ipaddress  # Convert IP string → numeric
-import os
-
-# Resolve project root relative to this file: backend/detection/ml/anomaly_detector.py
-_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ))
+import ipaddress  # Convert IP string → numeric 
 
 
 def ip_to_int(ip):
@@ -30,12 +26,10 @@ def preprocess_data(df):
     return df
 
 
-def run_anomaly_detection(input_file=None):
-    if input_file is None:
-        input_file = os.path.join(_PROJECT_ROOT, "data", "logs.csv")
-    # Load data
-    df = pd.read_csv(input_file)
-
+def run_anomaly_detection(df, contamination=0.05):
+    if isinstance(df, str):
+        df = pd.read_csv(df)
+        
     # Preprocess
     df = preprocess_data(df)
 
@@ -50,10 +44,15 @@ def run_anomaly_detection(input_file=None):
         'protocol_encoded'
     ]
 
-    X = df[features]
+    # Ensure columns exist and fillna
+    for feat in features:
+        if feat not in df.columns:
+            df[feat] = 0
+            
+    X = df[features].fillna(0)
 
     # Train Isolation Forest
-    model = IsolationForest(contamination=0.05, random_state=42)
+    model = IsolationForest(contamination=contamination, random_state=42)
     model.fit(X)
 
     # Predict anomalies
@@ -76,12 +75,19 @@ def run_anomaly_detection(input_file=None):
     normal_logs = df[df['anomaly'] == 0]
     suspicious_logs = df[df['anomaly'] == 1]
 
-    # Export results (using absolute paths so they work on any server)
-    os.makedirs(os.path.join(_PROJECT_ROOT, "outputs"), exist_ok=True)
-    normal_logs.to_csv(os.path.join(_PROJECT_ROOT, "outputs", "normal_logs.csv"), index=False)
-    suspicious_logs.to_csv(os.path.join(_PROJECT_ROOT, "outputs", "suspicious_logs.csv"), index=False)
-    # Separated logs for SOC analyst review
-    # index = False -> row labels (the index) are excluded when saving data to a file
+    # Export results — create outputs dir if it doesn't exist
+    # (Render's ephemeral filesystem won't have this pre-created)
+    import os as _os_ad
+    _out_dir = _os_ad.path.join(
+        _os_ad.path.abspath(_os_ad.path.join(_os_ad.path.dirname(__file__), "..", "..", "..")),
+        "outputs"
+    )
+    _os_ad.makedirs(_out_dir, exist_ok=True)
+    try:
+        normal_logs.to_csv(_os_ad.path.join(_out_dir, "normal_logs.csv"), index=False)
+        suspicious_logs.to_csv(_os_ad.path.join(_out_dir, "suspicious_logs.csv"), index=False)
+    except Exception as _e:
+        print(f"[WARN] Could not write output CSVs: {_e}")  # non-fatal
 
     print("Anomaly detection completed.")
     print(f"Normal logs: {len(normal_logs)}")

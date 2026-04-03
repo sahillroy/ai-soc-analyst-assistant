@@ -88,10 +88,10 @@ def detect_traffic_spike(df, z_threshold=3.0):
 
 # Detect high data transfer (possible exfiltration)
 
-def apply_rules(df):
-    df = detect_bruteforce(df)
-    df = detect_port_scan(df)
-    df = detect_traffic_spike(df)
+def apply_rules(df, bruteforce_threshold=5, port_scan_threshold=5, traffic_spike_z_score=3.0):
+    df = detect_bruteforce(df, threshold=bruteforce_threshold)
+    df = detect_port_scan(df, port_threshold=port_scan_threshold)
+    df = detect_traffic_spike(df, z_threshold=traffic_spike_z_score)
     # Making these functions as Dataframe for combining
 
     # Combine rule results

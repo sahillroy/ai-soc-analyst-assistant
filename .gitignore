@@ -37,3 +37,9 @@ build/
 
 # Logs
 *.log
+# Data files
+data/
+**/data/
+*.csv
+!backend/data/logs.csv
+!data/logs.csv

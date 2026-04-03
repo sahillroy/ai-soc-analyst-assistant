@@ -9,6 +9,10 @@ import CampaignView from '../components/CampaignView'
 import TimelineChart from '../components/TimelineChart'
 import ThreatMap from '../components/ThreatMap'
 
+import UploadPanel from '../components/UploadPanel'
+import SettingsPanel from '../components/SettingsPanel'
+import { Settings } from 'lucide-react'
+
 export default function Dashboard() {
   const [alerts, setAlerts]       = useState([])
   const [loading, setLoading]     = useState(false)
@@ -16,6 +20,8 @@ export default function Dashboard() {
   const [error, setError]         = useState(null)
   const [lastRun, setLastRun]     = useState(null)
   const [activeTab, setActiveTab] = useState('alerts')
+  
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   const fetchAlerts = useCallback(async () => {
     setLoading(true)
@@ -46,7 +52,16 @@ export default function Dashboard() {
   const handleRunAnalysis = async () => {
     try {
       setRunning(true)
-      await runAnalysis()
+      
+      let settings = {}
+      try {
+        const saved = localStorage.getItem('soc_settings')
+        if (saved) settings = JSON.parse(saved)
+      } catch (e) {
+        console.error("Failed to load settings before analysis", e)
+      }
+      
+      await runAnalysis(settings)
       setTimeout(fetchAlerts, 1000)
     } catch (err) {
       setError('Failed to start pipeline.')
@@ -69,6 +84,8 @@ export default function Dashboard() {
 
   return (
     <div style={{ background: '#0f172a', minHeight: '100vh', padding: 28, color: '#f8fafc', fontFamily: 'Segoe UI, sans-serif' }}>
+      
+      <SettingsPanel isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28, borderBottom: '1px solid #334155', paddingBottom: 20 }}>
@@ -82,6 +99,17 @@ export default function Dashboard() {
               Last run: {new Date(lastRun).toLocaleTimeString()}
             </span>
           )}
+          
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            style={{
+              background: 'transparent', border: '1px solid #334155', color: '#94a3b8',
+              borderRadius: 6, padding: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center'
+            }}
+          >
+            <Settings size={18} />
+          </button>
+          
           <button
             onClick={handleRunAnalysis}
             disabled={running || loading}
@@ -98,6 +126,8 @@ export default function Dashboard() {
           </button>
         </div>
       </div>
+
+      <UploadPanel />
 
       {/* Error banner */}
       {error && (

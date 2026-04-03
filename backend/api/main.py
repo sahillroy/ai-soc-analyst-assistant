@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 load_dotenv()
 import os
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Query
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Query, UploadFile, File, Body
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 import pandas as pd
@@ -87,10 +87,17 @@ def _sanitise_df(df: pd.DataFrame) -> pd.DataFrame:
 
 # ── Background pipeline task ──────────────────────────────────────────────────
 
-def _run_pipeline_task():
+def _run_pipeline_task(config: dict = None):
+    """
+    config keys (all optional, fall back to defaults if None):
+      bruteforce_threshold, port_scan_threshold, traffic_spike_z_score,
+      ml_contamination, critical_assets (comma-separated string)
+    """
     now_iso = lambda: datetime.datetime.utcnow().isoformat()
+    cfg = config or {}
+    print(f"[pipeline] Running with config: {cfg}")
     try:
-        df = run_pipeline()
+        df = run_pipeline(config=cfg)
 
         # Drop ML-only columns not in DB schema
         ml_cols = ['hour', 'source_ip_encoded', 'destination_ip_encoded', 'protocol_encoded']
@@ -116,19 +123,20 @@ def _run_pipeline_task():
             chunksize=50,
         )
 
-        with engine.connect() as conn:
-            db_set_pipeline_done(conn, last_run=now_iso(), total_alerts=len(df))
-
-        print(f"[✓] Pipeline done — {len(df)} alerts written.")
+        total_alerts_written = len(df)
+        print(f"[✓] Pipeline done — {total_alerts_written} alerts written.")
 
     except Exception as e:
         import traceback
         print(f"[ERROR] Pipeline task failed: {e}")
         traceback.print_exc()
-        # ALWAYS release the lock, even on crash
+        total_alerts_written = 0
+
+    finally:
+        # ALWAYS release the lock, even on crash or unhandled interrupt
         try:
             with engine.connect() as conn:
-                db_set_pipeline_done(conn, last_run=now_iso(), total_alerts=0)
+                db_set_pipeline_done(conn, last_run=now_iso(), total_alerts=total_alerts_written)
         except Exception as e2:
             print(f"[ERROR] Could not release pipeline lock: {e2}")
 
@@ -136,7 +144,26 @@ def _run_pipeline_task():
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.post("/api/run-analysis")
-def run_analysis(background_tasks: BackgroundTasks):
+def run_analysis(
+    background_tasks: BackgroundTasks,
+    payload: dict = Body(default={}),
+    bruteforce_threshold: int        = Query(5),
+    port_scan_threshold: int         = Query(5),
+    traffic_spike_z_score: float     = Query(3.0),
+    contamination: float             = Query(0.05),
+    ml_contamination: float          = Query(0.05),
+    critical_assets: str             = Query("10.0.0.5"),
+):
+    final_contamination = contamination if contamination != 0.05 else ml_contamination
+    config = {
+        "bruteforce_threshold":   bruteforce_threshold,
+        "port_scan_threshold":    port_scan_threshold,
+        "traffic_spike_z_score":  traffic_spike_z_score,
+        "ml_contamination":       final_contamination,
+        "critical_assets":        critical_assets,
+    }
+    print(f"[API] /api/run-analysis called with config: {config}")
+
     with engine.connect() as conn:
         state = db_get_pipeline_state(conn)
 
@@ -153,8 +180,8 @@ def run_analysis(background_tasks: BackgroundTasks):
         started_at = datetime.datetime.utcnow().isoformat()
         db_set_pipeline_running(conn, True, started_at=started_at)
 
-    background_tasks.add_task(_run_pipeline_task)
-    return {"status": "started", "started_at": started_at}
+    background_tasks.add_task(_run_pipeline_task, config)
+    return {"status": "started", "started_at": started_at, "config": config}
 
 
 @app.post("/api/reset-status")
@@ -411,215 +438,174 @@ def export_full_report_csv():
     )
 
 
-@app.get("/api/report/export/xlsx")
-def export_full_report_xlsx():
-    """
-    Generates a professional styled Excel report with:
-    - Severity-colored rows (Critical=purple, High=red, Medium=amber, Low=green)
-    - Bold headers with frozen top row
-    - Auto-sized columns
-    - Sheet 2: Summary statistics (severity + alert type breakdown)
+# ── File Upload & Sample Data ─────────────────────────────────────────────────
 
-    FIXES vs previous version:
-    1. Uses Response(content=buf.getvalue()) instead of StreamingResponse(buf)
-       StreamingResponse reads lazily after function returns — BytesIO can be
-       GC'd before streaming completes, causing silent 500s.
-    2. Removed unused GradientFill import (causes ImportError on older openpyxl).
-    3. ORDER BY CAST(risk_score AS FLOAT) — risk_score stored as TEXT in some
-       old schemas sorts lexicographically ('9' > '77'), giving wrong order.
-    4. All None values from PostgreSQL NULL are safely handled before float().
+@app.post("/api/upload-logs")
+async def upload_logs(file: UploadFile = File(...)):
     """
-    import io
-    from fastapi.responses import Response
-    from openpyxl import Workbook
-    from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
-    from openpyxl.utils import get_column_letter
-    from collections import Counter
+    Accept a CSV log file upload. Saves to data/uploaded_logs.csv.
+    Returns detected columns and row count.
+    Auto-detects and validates required columns.
+    """
+    import shutil, os
 
-    # ── Fetch data ────────────────────────────────────────────────────────────
+    if not file.filename.endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only .csv files are supported.")
+
+    # Absolute path — Render workers may have different CWDs
+    _root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    os.makedirs(os.path.join(_root, "data"), exist_ok=True)
+    dest = os.path.join(_root, "data", "uploaded_logs.csv")
+
+    with open(dest, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
     try:
-        with engine.connect() as conn:
-            rows = conn.execute(text(
-                "SELECT * FROM alerts ORDER BY risk_score DESC"
-            )).fetchall()
+        df = pd.read_csv(dest)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"DB error: {e}")
+        os.remove(dest)
+        raise HTTPException(status_code=400, detail=f"Could not parse CSV: {e}")
 
-    if not rows:
-        raise HTTPException(status_code=404, detail="No alerts found. Run Analysis first.")
+    # Try column mapping to check compatibility
+    try:
+        from backend.detection.column_mapper import map_columns
+        mapped_df, mapping_report = map_columns(df.copy())
+        columns_detected = list(df.columns)
+        columns_mapped   = mapping_report
+    except Exception:
+        mapped_df        = df
+        columns_detected = list(df.columns)
+        columns_mapped   = {}
 
-    data_dicts = [dict(r._mapping) for r in rows]
+    # Validate minimum required columns after mapping
+    required = {"source_ip", "destination_ip", "timestamp", "port", "bytes_transferred"}
+    mapped_cols = set(mapped_df.columns)
+    missing = required - mapped_cols
 
-    # ── Style palette ─────────────────────────────────────────────────────────
-    SEV_FILL = {
-        "Critical": PatternFill("solid", fgColor="3B0764"),
-        "High":     PatternFill("solid", fgColor="7F1D1D"),
-        "Medium":   PatternFill("solid", fgColor="78350F"),
-        "Low":      PatternFill("solid", fgColor="14532D"),
-        "Normal":   PatternFill("solid", fgColor="1E293B"),
+    if missing:
+        os.remove(dest)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Missing required columns: {sorted(missing)}. "
+                   f"Detected columns: {columns_detected}"
+        )
+
+    # VERY IMPORTANT: Save the mapped dataframe so the pipeline can actually use it
+    try:
+        mapped_df.to_csv(dest, index=False)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save mapped CSV: {e}")
+
+    return {
+        "success":          True,
+        "rows":             len(df),
+        "columns_detected": columns_detected,
+        "columns_mapped":   columns_mapped,
+        "message":          f"Uploaded {len(df)} rows successfully.",
     }
-    SEV_FONT = {
-        "Critical": Font(color="E9D5FF", bold=True, size=9),
-        "High":     Font(color="FECACA", bold=True, size=9),
-        "Medium":   Font(color="FDE68A", size=9),
-        "Low":      Font(color="BBF7D0", size=9),
-        "Normal":   Font(color="94A3B8", size=9),
-    }
-    HEADER_FILL  = PatternFill("solid", fgColor="0F172A")
-    HEADER_FONT  = Font(color="60A5FA", bold=True, size=10)
-    BASE_FILL    = PatternFill("solid", fgColor="0F172A")
-    ALT_FILL     = PatternFill("solid", fgColor="1E293B")
-    BASE_FONT    = Font(color="CBD5E1", size=9)
-    ALT_FONT     = Font(color="94A3B8", size=9)
-    THIN_BORDER  = Border(bottom=Side(border_style="thin", color="334155"))
-    CENTER       = Alignment(horizontal="center", vertical="center", wrap_text=False)
-    WRAP         = Alignment(horizontal="left",   vertical="top",    wrap_text=True)
 
-    # ── Column definitions: (header label, db field, column width) ────────────
-    COLS = [
-        ("Incident ID",        "incident_id",         22),
-        ("Timestamp",          "timestamp",            20),
-        ("Source IP",          "source_ip",            16),
-        ("Destination",        "destination_ip",       16),
-        ("Port",               "port",                  7),
-        ("Protocol",           "protocol",              9),
-        ("Alert Type",         "alert_type",           26),
-        ("Severity",           "severity",             11),
-        ("Risk Score",         "risk_score",           11),
-        ("Confidence %",       "confidence",           13),
-        ("Campaign",           "campaign_id",          14),
-        ("Escalation",         "escalation",           28),
-        ("Status",             "status",               14),
-        ("AI Summary",         "incident_summary",     55),
-        ("Recommended Action", "recommended_action",   45),
-        ("SOC Playbook",       "soc_playbook_action",  35),
-        ("Automation Result",  "automation_result",    38),
-        ("MITRE Technique",    "mitre_technique",      30),
-        ("Analyst Notes",      "notes",                30),
+
+@app.get("/api/sample-data")
+def load_sample_data():
+    """
+    Loads demo data for the pipeline.
+
+    Strategy (in order):
+    1. Try to copy data/logs.csv if it exists in the repo
+    2. If not found (e.g. not committed to git, or path mismatch),
+       GENERATE synthetic log data on the fly — no file dependency.
+
+    This makes the endpoint work on any deployment regardless of
+    whether logs.csv was committed and where the CWD is.
+    """
+    import os, shutil
+
+    _root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    os.makedirs(os.path.join(_root, "data"), exist_ok=True)
+    dst = os.path.join(_root, "data", "uploaded_logs.csv")
+
+    # ── Try reading from committed logs.csv first ─────────────────────────
+    # Check multiple candidate locations to be resilient to project structure
+    candidates = [
+        os.path.join(_root, "data", "logs.csv"),
+        os.path.join(_root, "..", "data", "logs.csv"),
+        os.path.join(os.getcwd(), "data", "logs.csv"),
+        "data/logs.csv",
     ]
+    src = next((p for p in candidates if os.path.exists(p)), None)
 
-    WRAP_FIELDS = {
-        "incident_summary", "recommended_action",
-        "soc_playbook_action", "automation_result", "notes",
-    }
-    FLOAT_FIELDS = {"risk_score", "confidence"}
+    if src:
+        shutil.copy(src, dst)
+        try:
+            row_count = len(pd.read_csv(dst))
+        except Exception:
+            row_count = 550
+        return {
+            "success": True,
+            "rows":    row_count,
+            "source":  "file",
+            "message": f"Demo data loaded ({row_count} rows)",
+        }
 
-    wb = Workbook()
+    # ── Generate synthetic demo data on the fly ───────────────────────────
+    # Runs when logs.csv isn't in the repo or isn't reachable.
+    # Produces realistic network log data with embedded attack patterns.
+    import random
+    from datetime import datetime, timedelta
 
-    # ════════════════════════════════════════════════════════════════════════
-    # Sheet 1 — Incident Report
-    # ════════════════════════════════════════════════════════════════════════
-    ws = wb.active
-    ws.title = "Incident Report"
-    ws.sheet_view.showGridLines = False
+    random.seed(42)
+    base_time    = datetime(2024, 1, 15, 8, 0, 0)
+    internal_ips = [
+        "10.0.0.1","10.0.0.2","10.0.0.3","10.0.0.4","10.0.0.5",
+        "192.168.1.1","192.168.1.10","192.168.1.100","192.168.1.250",
+    ]
+    external_ips = [
+        "203.0.113.5","198.51.100.23","185.220.101.47",
+        "45.33.32.156","91.108.4.0","172.217.16.46","104.21.0.1",
+    ]
+    dest_ips = ["10.0.0.5","10.0.0.2","10.0.0.3","10.0.0.1"]
 
-    # Header row
-    for col_idx, (label, _, width) in enumerate(COLS, start=1):
-        cell = ws.cell(row=1, column=col_idx, value=label)
-        cell.fill      = HEADER_FILL
-        cell.font      = HEADER_FONT
-        cell.alignment = CENTER
-        cell.border    = THIN_BORDER
-        ws.column_dimensions[get_column_letter(col_idx)].width = width
+    rows = []
+    for i in range(550):
+        t          = base_time + timedelta(minutes=random.randint(0, 480))
+        is_attack  = random.random() < 0.22
+        attack_type = random.choice(["bruteforce","portscan","exfil","anomaly"])
 
-    ws.row_dimensions[1].height = 22
-    ws.freeze_panes = "A2"   # freeze header row
-
-    # Data rows
-    for row_idx, d in enumerate(data_dicts, start=2):
-        sev      = d.get("severity") or "Normal"
-        row_fill = SEV_FILL.get(sev, BASE_FILL)
-        row_font = SEV_FONT.get(sev, BASE_FONT)
-
-        # Alternate faint shade for Medium/Low/Normal rows
-        if sev not in ("Critical", "High"):
-            row_fill = ALT_FILL if row_idx % 2 == 0 else BASE_FILL
-            row_font = ALT_FONT  if row_idx % 2 == 0 else BASE_FONT
-
-        has_wrap = False
-        for col_idx, (_, field, _) in enumerate(COLS, start=1):
-            val  = d.get(field)
-            # Safe None handling — PostgreSQL NULLs come through as Python None
-            disp = "" if val is None else str(val)
-
-            if field in FLOAT_FIELDS and val is not None:
-                try:
-                    disp = f"{float(val):.1f}"
-                except (TypeError, ValueError):
-                    pass
-
-            cell        = ws.cell(row=row_idx, column=col_idx, value=disp)
-            cell.fill   = row_fill
-            cell.font   = row_font
-            cell.border = THIN_BORDER
-
-            if field in WRAP_FIELDS:
-                cell.alignment = WRAP
-                has_wrap = True
+        if is_attack:
+            src_ip = random.choice(external_ips + ["192.168.1.250"])
+            dst_ip = random.choice(dest_ips)
+            if attack_type == "bruteforce":
+                port, bytes_t, failed, proto = 22, random.randint(500,2000), random.randint(8,25), "TCP"
+            elif attack_type == "portscan":
+                port, bytes_t, failed, proto = random.randint(1,65535), random.randint(100,500), 0, "TCP"
+            elif attack_type == "exfil":
+                port, bytes_t, failed, proto = random.choice([80,443,8080]), random.randint(50000,500000), 0, random.choice(["TCP","UDP"])
             else:
-                cell.alignment = CENTER
+                port, bytes_t, failed, proto = random.randint(1024,9999), random.randint(1000,10000), random.randint(0,3), random.choice(["TCP","UDP"])
+        else:
+            src_ip  = random.choice(internal_ips)
+            dst_ip  = random.choice(dest_ips)
+            port    = random.choice([80, 443, 22, 3306, 5432, 8080])
+            bytes_t = random.randint(200, 8000)
+            failed  = random.randint(0, 1)
+            proto   = random.choice(["TCP", "UDP"])
 
-        ws.row_dimensions[row_idx].height = 65 if has_wrap else 16
+        rows.append({
+            "timestamp":         t.strftime("%Y-%m-%d %H:%M:%S"),
+            "source_ip":         src_ip,
+            "destination_ip":    dst_ip,
+            "port":              port,
+            "protocol":          proto,
+            "bytes_transferred": bytes_t,
+            "failed_logins":     failed,
+        })
 
-    # ════════════════════════════════════════════════════════════════════════
-    # Sheet 2 — Summary Statistics
-    # ════════════════════════════════════════════════════════════════════════
-    ws2 = wb.create_sheet("Summary")
-    ws2.sheet_view.showGridLines = False
-    ws2.column_dimensions["A"].width = 32
-    ws2.column_dimensions["B"].width = 14
+    demo_df = pd.DataFrame(rows)
+    demo_df.to_csv(dst, index=False)
 
-    def _s2_cell(row, col, value, font=None, fill=None, align=None):
-        c = ws2.cell(row=row, column=col, value=value)
-        if font:  c.font      = font
-        if fill:  c.fill      = fill
-        if align: c.alignment = align
-        c.border = THIN_BORDER
-        return c
-
-    # Title
-    _s2_cell(1, 1, "SOC AI Analyst — Incident Summary",
-             font=Font(color="60A5FA", bold=True, size=14),
-             fill=HEADER_FILL,
-             align=Alignment(horizontal="left", vertical="center"))
-    ws2.row_dimensions[1].height = 28
-
-    _s2_cell(2, 1, f"Total incidents analysed: {len(data_dicts)}",
-             font=Font(color="94A3B8", italic=True, size=10),
-             fill=BASE_FILL)
-
-    # Severity breakdown
-    sev_counts  = Counter(d.get("severity") or "Normal" for d in data_dicts)
-    type_counts = Counter(d.get("alert_type") or "Unknown" for d in data_dicts)
-
-    _s2_cell(4, 1, "Severity", font=HEADER_FONT, fill=HEADER_FILL, align=CENTER)
-    _s2_cell(4, 2, "Count",    font=HEADER_FONT, fill=HEADER_FILL, align=CENTER)
-
-    for i, sev in enumerate(["Critical", "High", "Medium", "Low", "Normal"], start=5):
-        cnt = sev_counts.get(sev, 0)
-        _s2_cell(i, 1, sev, font=SEV_FONT.get(sev, BASE_FONT),
-                 fill=SEV_FILL.get(sev, BASE_FILL), align=CENTER)
-        _s2_cell(i, 2, cnt, font=SEV_FONT.get(sev, BASE_FONT),
-                 fill=SEV_FILL.get(sev, BASE_FILL), align=CENTER)
-
-    _s2_cell(11, 1, "Alert Type",  font=HEADER_FONT, fill=HEADER_FILL, align=CENTER)
-    _s2_cell(11, 2, "Count",       font=HEADER_FONT, fill=HEADER_FILL, align=CENTER)
-
-    for j, (atype, cnt) in enumerate(type_counts.most_common(10), start=12):
-        fill = ALT_FILL if j % 2 == 0 else BASE_FILL
-        _s2_cell(j, 1, atype, font=BASE_FONT, fill=fill, align=CENTER)
-        _s2_cell(j, 2, cnt,   font=BASE_FONT, fill=fill, align=CENTER)
-
-    # ── Serialize to bytes and return ─────────────────────────────────────────
-    # IMPORTANT: Use Response(content=buf.getvalue()), NOT StreamingResponse(buf).
-    # StreamingResponse reads the BytesIO lazily after this function returns,
-    # by which point Python may have GC'd the local buf — causing a silent 500.
-    buf = io.BytesIO()
-    wb.save(buf)
-    xlsx_bytes = buf.getvalue()   # read all bytes NOW, while buf is still alive
-
-    return Response(
-        content=xlsx_bytes,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=soc-ai-incident-report.xlsx"},
-    )
+    return {
+        "success": True,
+        "rows":    len(demo_df),
+        "source":  "generated",
+        "message": f"Demo data generated ({len(demo_df)} rows with realistic attack patterns)",
+    }

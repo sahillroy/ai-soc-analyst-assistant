@@ -14,7 +14,7 @@ ASSET_CRITICALITY = {
 }
 
 
-def assign_severity_scored(df):
+def assign_severity_scored(df, critical_assets="10.0.0.5"):
     # Base score (vectorized — no iterrows)
     base_score = (
         df['rule_bruteforce'].astype(int)    * 40 +
@@ -34,8 +34,9 @@ def assign_severity_scored(df):
 
     time_multiplier = np.where((hour_col < 6) | (hour_col > 22), 1.3, 1.0)
 
-    # Asset criticality multiplier
-    asset_multiplier = df['destination_ip'].map({'10.0.0.5': 1.5}).fillna(1.0)
+    # Asset criticality multiplier — built from configurable IP list
+    asset_map = {ip.strip(): 1.5 for ip in critical_assets.split(",") if ip.strip()}
+    asset_multiplier = df['destination_ip'].map(asset_map).fillna(1.0)
 
     # Final risk score — intermediate values NOT written to df (keeps DB clean)
     df['risk_score'] = (

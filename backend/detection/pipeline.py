@@ -85,18 +85,49 @@ def _coerce_numeric_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 # ── Pipeline ──────────────────────────────────────────────────────────────────
 
-def run_pipeline(input_path=None):
+def run_pipeline(input_path=None, config=None):
     if input_path is None:
-        input_path = _os.path.join(_PROJECT_ROOT, "data", "logs.csv")
+        # Use uploaded file if it exists, else fall back to demo data
+        uploaded = _os.path.join(_PROJECT_ROOT, "data", "uploaded_logs.csv")
+        default  = _os.path.join(_PROJECT_ROOT, "data", "logs.csv")
+        input_path = uploaded if _os.path.exists(uploaded) else default
+        print(f"[pipeline] Input file: {input_path}")
+
+    cfg = config or {}
+    bruteforce_threshold  = int(cfg.get("bruteforce_threshold",  5))
+    port_scan_threshold   = int(cfg.get("port_scan_threshold",   5))
+    traffic_spike_z_score = float(cfg.get("traffic_spike_z_score", 3.0))
+    ml_contamination      = float(cfg.get("ml_contamination",    0.05))
+    critical_assets       = str(cfg.get("critical_assets",       "10.0.0.5"))
 
     print("[+] Starting SOC pipeline...")
+    print(f"    bruteforce_threshold={bruteforce_threshold}, port_scan_threshold={port_scan_threshold}")
+    print(f"    traffic_spike_z_score={traffic_spike_z_score}, ml_contamination={ml_contamination}")
+    print(f"    critical_assets={critical_assets}")
 
-    # Step 1 — ML anomaly detection
-    df = run_anomaly_detection(input_path)
+    # Step 1 — Parse and normalise columns BEFORE ML detection
+    # This handles uploaded files with non-standard column names
+    # (e.g. 'src_ip' instead of 'source_ip', 'bytes' instead of 'bytes_transferred')
+    try:
+        from backend.detection.log_parser import parse_logs
+        from backend.detection.column_mapper import map_columns
+        raw_df = parse_logs(input_path)
+        raw_df, mapping_report = map_columns(raw_df)
+        if mapping_report:
+            print(f"[1a] Column mapping applied: {mapping_report}")
+        # Run anomaly detection on the already-loaded DataFrame
+        df = run_anomaly_detection(raw_df, contamination=ml_contamination)
+    except Exception as _parse_err:
+        print(f"[WARN] log_parser/column_mapper failed ({_parse_err}), falling back to direct read")
+        df = run_anomaly_detection(input_path, contamination=ml_contamination)
     print(f"[1] Anomaly detection done. Rows: {len(df)}")
 
     # Step 2 — Rule-based detection
-    df = apply_rules(df)
+    df = apply_rules(df,
+        bruteforce_threshold=bruteforce_threshold,
+        port_scan_threshold=port_scan_threshold,
+        traffic_spike_z_score=traffic_spike_z_score,
+    )
     print(f"[2] Rules applied.")
 
     # Step 3 — Coerce bool columns to int RIGHT AFTER rule engine runs.
@@ -106,7 +137,7 @@ def run_pipeline(input_path=None):
     print(f"[3] Bool columns coerced to int.")
 
     # Step 4 — Severity scoring
-    df = assign_severity_scored(df)
+    df = assign_severity_scored(df, critical_assets=critical_assets)
     print(f"[4] Severity scored.")
 
     # Step 5 — Alert classification

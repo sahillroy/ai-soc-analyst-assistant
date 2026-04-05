@@ -11,4 +11,6 @@ psycopg2-binary
 gunicorn
 openpyxl
 python-multipart
-
+bcrypt
+PyJWT
+email-validator

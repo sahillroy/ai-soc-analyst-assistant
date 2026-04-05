@@ -4,9 +4,82 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
+    <title>Sentinel SOC AI</title>
+    
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "outline": "#8c909f",
+                        "on-tertiary-fixed": "#002113",
+                        "surface-container-lowest": "#060e20",
+                        "surface-container-highest": "#2d3449",
+                        "on-primary-fixed-variant": "#004395",
+                        "surface-container-high": "#222a3d",
+                        "surface-dim": "#0b1326",
+                        "tertiary": "#4edea3",
+                        "secondary-fixed-dim": "#d0bcff",
+                        "error": "#ef4444",
+                        "on-secondary-fixed-variant": "#5516be",
+                        "inverse-on-surface": "#283044",
+                        "outline-variant": "#424754",
+                        "primary-container": "#4d8eff",
+                        "on-tertiary-fixed-variant": "#005236",
+                        "on-surface": "#dae2fd",
+                        "on-primary-fixed": "#001a42",
+                        "tertiary-container": "#00a572",
+                        "background": "#0b1326",
+                        "on-error-container": "#ffdad6",
+                        "secondary-fixed": "#e9ddff",
+                        "error-container": "#93000a",
+                        "inverse-surface": "#dae2fd",
+                        "primary-fixed-dim": "#adc6ff",
+                        "tertiary-fixed": "#6ffbbe",
+                        "secondary-container": "#571bc1",
+                        "on-background": "#dae2fd",
+                        "surface-variant": "#2d3449",
+                        "on-secondary-fixed": "#23005c",
+                        "surface": "#0b1326",
+                        "on-surface-variant": "#c2c6d6",
+                        "surface-bright": "#31394d",
+                        "on-secondary": "#3c0091",
+                        "on-tertiary": "#003824",
+                        "on-primary": "#002e6a",
+                        "inverse-primary": "#005ac2",
+                        "on-secondary-container": "#c4abff",
+                        "surface-container": "#171f33",
+                        "tertiary-fixed-dim": "#4edea3",
+                        "primary": "#3b82f6",
+                        "surface-tint": "#3b82f6",
+                        "secondary": "#d0bcff",
+                        "primary-fixed": "#d8e2ff",
+                        "on-primary-container": "#00285d",
+                        "on-error": "#ffffff",
+                        "surface-container-low": "#131b2e",
+                        "on-tertiary-container": "#00311f"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "1rem",
+                        "full": "9999px"
+                    },
+                    "fontFamily": {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                },
+            },
+        }
+    </script>
   </head>
-  <body>
+  <body class="font-body text-on-surface dark">
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

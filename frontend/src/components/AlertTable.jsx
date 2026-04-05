@@ -1,194 +1,214 @@
-import { useState } from 'react'
-import IncidentModal from './IncidentModal'
-import { exportReportCSV } from '../api/client'
+import React, { useState } from 'react';
+import IncidentModal from './IncidentModal';
 
-const SEV_COLOR = {
-  Critical: '#8b5cf6', High: '#ef4444',
-  Medium: '#f59e0b', Low: '#10b981', Normal: '#475569',
-}
+export default function AlertTable({ alerts = [], onRowClick, onSelectAlert }) {
+  const handler = onRowClick || onSelectAlert;
+  const [search, setSearch] = useState('');
+  const [severityFilter, setSeverityFilter] = useState('All Severities');
+  const [sortCol, setSortCol] = useState(null);
+  const [selected, setSelected] = useState(null);
 
-export default function AlertTable({ alerts }) {
-  const [selected, setSelected]   = useState(null)
-  const [search, setSearch]       = useState('')
-  const [sevFilter, setSevFilter] = useState('all')
-  const [sortCol, setSortCol]     = useState(null)
-  const [sortDir, setSortDir]     = useState('asc')
-
-  // Filter
   const filtered = alerts.filter(a => {
-    const matchSev  = sevFilter === 'all' || a.severity === sevFilter
-    const matchText = !search || (
-      a.source_ip?.includes(search) ||
-      a.incident_id?.toLowerCase().includes(search.toLowerCase()) ||
-      a.alert_type?.toLowerCase().includes(search.toLowerCase())
-    )
-    return matchSev && matchText
-  })
+    const s = search.toLowerCase();
+    const matchSearch = String(a.incident_id || '').toLowerCase().includes(s) || 
+                        String(a.source_ip || '').toLowerCase().includes(s) ||
+                        String(a.campaign_id || '').toLowerCase().includes(s);
+    const matchSev = severityFilter === 'All Severities' || a.severity === severityFilter;
+    return matchSearch && matchSev;
+  });
 
-  // Sort
-  const sorted = sortCol
-    ? [...filtered].sort((a, b) => {
-        const va = a[sortCol] ?? ''
-        const vb = b[sortCol] ?? ''
-        const cmp = String(va).localeCompare(String(vb), undefined, { numeric: true })
-        return sortDir === 'asc' ? cmp : -cmp
-      })
-    : filtered
+  const sorted = sortCol ? [...filtered].sort((a, b) => {
+    if (a[sortCol] < b[sortCol]) return -1;
+    if (a[sortCol] > b[sortCol]) return 1;
+    return 0;
+  }) : filtered;
 
   const toggleSort = col => {
-    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
-    else { setSortCol(col); setSortDir('asc') }
-  }
+    if (sortCol === col) {
+      setSortCol(null);
+    } else {
+      setSortCol(col);
+    }
+  };
 
-  const TH = ({ col, label }) => (
-    <th
-      onClick={() => toggleSort(col)}
-      style={{ padding: '10px 14px', textAlign: 'left', cursor: 'pointer',
-        color: sortCol === col ? '#f8fafc' : '#94a3b8',
-        fontSize: 12, textTransform: 'uppercase', fontWeight: 600,
-        borderBottom: '1px solid #334155', whiteSpace: 'nowrap' }}
-    >
-      {label} {sortCol === col ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
-    </th>
-  )
+  const formatConfidence = (conf) => {
+    if (conf == null) return '-';
+    let num = Number(conf);
+    if (num <= 1) num = num * 100;
+    return num.toFixed(2);
+  };
 
+  const exportCSV = () => {
+    const headers = [
+      'incident_id', 'timestamp', 'source_ip', 'destination_ip', 'port',
+      'alert_type', 'severity', 'risk_score', 'confidence', 'campaign_id',
+      'escalation', 'mitre_technique', 'description', 'recommendation'
+    ];
 
+    const escapeCsv = (str) => {
+      if (str == null) return '';
+      const stringified = String(str);
+      if (stringified.includes(',') || stringified.includes('"') || stringified.includes('\n')) {
+        return `"${stringified.replace(/"/g, '""')}"`;
+      }
+      return stringified;
+    };
+
+    const csvRows = [headers.map(escapeCsv).join(',')];
+
+    sorted.forEach(a => {
+      const row = [
+        a.incident_id,
+        a.timestamp,
+        a.source_ip,
+        a.destination_ip,
+        a.port,
+        a.alert_type,
+        a.severity,
+        a.risk_score,
+        formatConfidence(a.confidence),
+        a.campaign_id,
+        a.escalation ? 'true' : 'false',
+        a.mitre_technique,
+        a.incident_summary,
+        a.recommended_action
+      ];
+      csvRows.push(row.map(escapeCsv).join(','));
+    });
+
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    
+    const now = new Date();
+    const ts = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `soc_alerts_${ts}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const getSeverityStyle = (severity) => {
+    switch (severity) {
+      case 'Critical': return { background: '#8b5cf622', color: '#8b5cf6', border: '1px solid #8b5cf644', borderRadius: 12, padding: '2px 8px', fontSize: 12, display: 'inline-block' };
+      case 'High': return { background: '#ef444422', color: '#ef4444', border: '1px solid #ef444444', borderRadius: 12, padding: '2px 8px', fontSize: 12, display: 'inline-block' };
+      case 'Medium': return { background: '#f59e0b22', color: '#f59e0b', border: '1px solid #f59e0b44', borderRadius: 12, padding: '2px 8px', fontSize: 12, display: 'inline-block' };
+      case 'Low': return { background: '#10b98122', color: '#10b981', border: '1px solid #10b98144', borderRadius: 12, padding: '2px 8px', fontSize: 12, display: 'inline-block' };
+      default: return { background: '#47556922', color: '#475569', border: '1px solid #47556944', borderRadius: 12, padding: '2px 8px', fontSize: 12, display: 'inline-block' }; // Normal
+    }
+  };
 
   return (
-    <>
-              {/* Controls */}
-              <div style={{
-          display: 'flex',
-          gap: 12,
-          marginBottom: 12,
-          flexWrap: 'wrap',
-          justifyContent: 'space-between',
-          alignItems: 'center'
-        }}>
-        
-          {/* LEFT: Search */}
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search IP, ID, alert type..."
-            style={{
-              background: '#0f172a',
-              color: '#f8fafc',
-              border: '1px solid #334155',
-              borderRadius: 6,
-              padding: '8px 12px',
-              fontSize: 14,
-              flex: 1,
-              minWidth: 200,
-            }}
-          />
-        
-          {/* RIGHT: Filter + Export */}
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <select
-              value={sevFilter}
-              onChange={e => setSevFilter(e.target.value)}
-              style={{
-                background: '#0f172a', color: '#f8fafc', border: '1px solid #334155',
-                borderRadius: 6, padding: '8px 12px', fontSize: 14,
-              }}
-            >
-              <option value="all">All severities</option>
-              {['Critical', 'High', 'Medium', 'Low', 'Normal'].map(s => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-
-            {/* Export button */}
-            <button
-              onClick={exportReportCSV}
-              title="Download full AI-generated incident report (includes LLM summaries, MITRE, playbook actions)"
-              style={{
-                background: '#1e3a5f', color: '#60a5fa', border: '1px solid #3b82f6',
-                borderRadius: 6, padding: '8px 14px', cursor: 'pointer',
-                fontSize: 14, display: 'flex', alignItems: 'center', gap: 6,
-                fontWeight: 600,
-              }}
-            >
-              ↓ Export AI Report
-            </button>
-          </div>
-
+    <div style={{ marginTop: 24, fontFamily: 'Inter, sans-serif' }}>
+      {/* Controls */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+        <input 
+          style={{ flex: 1, minWidth: 200, maxWidth: 400, padding: '8px 12px', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc', borderRadius: 4, outline: 'none' }}
+          placeholder="Search items..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        <div style={{ display: 'flex', gap: 16 }}>
+          <select 
+            style={{ padding: '8px 12px', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc', borderRadius: 4, outline: 'none', cursor: 'pointer' }}
+            value={severityFilter}
+            onChange={e => setSeverityFilter(e.target.value)}
+          >
+            <option>All Severities</option>
+            <option>Critical</option>
+            <option>High</option>
+            <option>Medium</option>
+            <option>Low</option>
+          </select>
+          <button 
+            style={{ padding: '8px 16px', background: '#3b82f6', color: '#ffffff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 500 }}
+            onClick={exportCSV}
+          >
+            Export CSV
+          </button>
         </div>
+      </div>
 
       {/* Table */}
-      <div style={{ background: '#1e293b', borderRadius: 8, overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+      <div style={{ overflowX: 'auto', background: '#0f172a', borderRadius: 8, border: '1px solid #1e293b' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', color: '#f8fafc', fontSize: 14 }}>
           <thead>
-            <tr>
-              <TH col="incident_id"  label="Incident ID" />
-              <TH col="source_ip"    label="Source IP" />
-              <TH col="alert_type"   label="Alert type" />
-              <TH col="severity"     label="Severity" />
-              <TH col="risk_score"   label="Risk score" />
-              <TH col="confidence"   label="Confidence" />
-              <TH col="campaign_id"  label="Campaign" />
-              <TH col="escalation"   label="Escalation" />
+            <tr style={{ borderBottom: '1px solid #1e293b', background: '#1e293b', color: '#94a3b8', fontSize: 12, textTransform: 'uppercase' }}>
+              <th onClick={() => toggleSort('incident_id')} style={{ padding: '12px 16px', cursor: 'pointer' }}>Incident ID</th>
+              <th onClick={() => toggleSort('source_ip')} style={{ padding: '12px 16px', cursor: 'pointer' }}>Source IP</th>
+              <th onClick={() => toggleSort('alert_type')} style={{ padding: '12px 16px', cursor: 'pointer' }}>Alert Type</th>
+              <th onClick={() => toggleSort('severity')} style={{ padding: '12px 16px', cursor: 'pointer' }}>Severity</th>
+              <th onClick={() => toggleSort('risk_score')} style={{ padding: '12px 16px', cursor: 'pointer' }}>Risk Score</th>
+              <th onClick={() => toggleSort('confidence')} style={{ padding: '12px 16px', cursor: 'pointer' }}>Confidence</th>
+              <th onClick={() => toggleSort('campaign_id')} style={{ padding: '12px 16px', cursor: 'pointer' }}>Campaign</th>
+              <th onClick={() => toggleSort('escalation')} style={{ padding: '12px 16px', cursor: 'pointer' }}>Escalation</th>
             </tr>
           </thead>
           <tbody>
             {sorted.length === 0 ? (
               <tr>
-                <td colSpan={8} style={{ padding: 32, textAlign: 'center', color: '#475569' }}>
-                  No alerts match the current filter.
+                <td colSpan={8}>
+                  <div style={{ textAlign: 'center', color: '#475569', padding: 32 }}>
+                    No alerts match the current filter.
+                  </div>
                 </td>
               </tr>
-            ) : sorted.map((alert, i) => (
-              <tr
-                key={alert.incident_id || i}
-                onClick={() => setSelected(alert)}
-                style={{
-                  borderBottom: '1px solid #1e293b',
-                  cursor: 'pointer',
-                  background: i % 2 === 0 ? '#0f172a' : 'transparent',
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = '#334155'}
-                onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? '#0f172a' : 'transparent'}
-              >
-                <td style={{ padding: '10px 14px', fontFamily: 'monospace', color: '#3b82f6', fontWeight: 600 }}>
-                  {alert.incident_id}
-                </td>
-                <td style={{ padding: '10px 14px', fontFamily: 'monospace', color: '#94a3b8' }}>
-                  {alert.source_ip}
-                </td>
-                <td style={{ padding: '10px 14px', color: '#f1f5f9' }}>
-                  {alert.alert_type}
-                </td>
-                <td style={{ padding: '10px 14px' }}>
-                  <span style={{
-                    padding: '2px 10px', borderRadius: 12, fontSize: 12, fontWeight: 600,
-                    background: (SEV_COLOR[alert.severity] || '#475569') + '22',
-                    color: SEV_COLOR[alert.severity] || '#475569',
-                    border: `1px solid ${(SEV_COLOR[alert.severity] || '#475569')}44`,
-                  }}>
-                    {alert.severity}
-                  </span>
-                </td>
-                <td style={{ padding: '10px 14px', color: '#94a3b8' }}>
-                  {alert.risk_score}
-                </td>
-                <td style={{ padding: '10px 14px', color: '#94a3b8' }}>
-                  {Number(alert.confidence).toFixed(1)}%
-                </td>
-                <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 12 }}>
-                  {alert.campaign_id}
-                </td>
-                <td style={{ padding: '10px 14px', color: alert.escalation === 'Escalated to Tier-2' ? '#ef4444' : '#64748b', fontSize: 12 }}>
-                  {alert.escalation}
-                </td>
-              </tr>
-            ))}
+            ) : (
+              sorted.map((alert, index) => {
+                const isEven = index % 2 === 0;
+                return (
+                  <tr 
+                    key={alert.incident_id || index} 
+                    onClick={() => handler ? handler(alert) : setSelected(alert)}
+                    style={{ 
+                      cursor: 'pointer', 
+                      borderBottom: '1px solid #1e293b',
+                      background: isEven ? '#0f172a' : 'transparent',
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#334155'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = isEven ? '#0f172a' : 'transparent'}
+                  >
+                    <td style={{ padding: '12px 16px', fontWeight: 500 }}>{alert.incident_id}</td>
+                    <td style={{ padding: '12px 16px', opacity: 0.9 }}>{alert.source_ip}</td>
+                    <td style={{ padding: '12px 16px' }}>{alert.alert_type}</td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <span style={getSeverityStyle(alert.severity)}>{alert.severity || 'Normal'}</span>
+                    </td>
+                    <td style={{ padding: '12px 16px' }}>{alert.risk_score}</td>
+                    <td style={{ padding: '12px 16px' }}>
+                      {alert.confidence != null ? `${formatConfidence(alert.confidence)}%` : '-'}
+                    </td>
+                    <td style={{ padding: '12px 16px' }}>
+                      {alert.campaign_id && alert.campaign_id.toLowerCase() !== 'standalone' ? (
+                        <span style={{ background: '#8b5cf622', color: '#8b5cf6', borderRadius: 12, padding: '2px 8px', fontSize: 12, display: 'inline-block' }}>
+                          {alert.campaign_id}
+                        </span>
+                      ) : (
+                        <span style={{ color: '#64748b' }}>{alert.campaign_id || 'standalone'}</span>
+                      )}
+                    </td>
+                    <td style={{ padding: '12px 16px' }}>
+                      {alert.escalation === 'Escalated to Tier-2' ? (
+                        <span style={{ color: '#ef4444', fontSize: 12 }}>{alert.escalation}</span>
+                      ) : (
+                        <span style={{ color: '#64748b', fontSize: 12 }}>{alert.escalation || 'Under Review'}</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>
 
-      {/* Modal */}
-      <IncidentModal alert={selected} onClose={() => setSelected(null)} />
-    </>
-  )
+      {selected && !handler && (
+        <IncidentModal incident={selected} onClose={() => setSelected(null)} />
+      )}
+    </div>
+  );
 }

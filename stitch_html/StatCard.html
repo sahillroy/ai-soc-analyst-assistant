@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Sentinel Core - Redesigned Stat Cards</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "outline": "#8c909f",
+                        "on-tertiary-fixed": "#002113",
+                        "surface-container-lowest": "#060e20",
+                        "surface-container-highest": "#2d3449",
+                        "on-primary-fixed-variant": "#004395",
+                        "surface-container-high": "#222a3d",
+                        "surface-dim": "#0b1326",
+                        "tertiary": "#4edea3",
+                        "secondary-fixed-dim": "#d0bcff",
+                        "error": "#ffb4ab",
+                        "on-secondary-fixed-variant": "#5516be",
+                        "inverse-on-surface": "#283044",
+                        "outline-variant": "#424754",
+                        "primary-container": "#4d8eff",
+                        "on-tertiary-fixed-variant": "#005236",
+                        "on-surface": "#dae2fd",
+                        "on-primary-fixed": "#001a42",
+                        "tertiary-container": "#00a572",
+                        "background": "#0b1326",
+                        "on-error-container": "#ffdad6",
+                        "secondary-fixed": "#e9ddff",
+                        "error-container": "#93000a",
+                        "inverse-surface": "#dae2fd",
+                        "primary-fixed-dim": "#adc6ff",
+                        "tertiary-fixed": "#6ffbbe",
+                        "secondary-container": "#571bc1",
+                        "on-background": "#dae2fd",
+                        "surface-variant": "#2d3449",
+                        "on-secondary-fixed": "#23005c",
+                        "surface": "#0b1326",
+                        "on-surface-variant": "#c2c6d6",
+                        "surface-bright": "#31394d",
+                        "on-secondary": "#3c0091",
+                        "on-tertiary": "#003824",
+                        "on-primary": "#002e6a",
+                        "inverse-primary": "#005ac2",
+                        "on-secondary-container": "#c4abff",
+                        "surface-container": "#171f33",
+                        "tertiary-fixed-dim": "#4edea3",
+                        "primary": "#adc6ff",
+                        "surface-tint": "#adc6ff",
+                        "secondary": "#d0bcff",
+                        "primary-fixed": "#d8e2ff",
+                        "on-primary-container": "#00285d",
+                        "on-error": "#690005",
+                        "surface-container-low": "#131b2e",
+                        "on-tertiary-container": "#00311f"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .stat-card-blue:hover { border-color: #3b82f6; box-shadow: 0 0 15px rgba(59, 130, 246, 0.3); }
+        .stat-card-red:hover { border-color: #ef4444; box-shadow: 0 0 15px rgba(239, 68, 68, 0.3); }
+        .stat-card-orange:hover { border-color: #f59e0b; box-shadow: 0 0 15px rgba(245, 158, 11, 0.3); }
+        .stat-card-green:hover { border-color: #10b981; box-shadow: 0 0 15px rgba(16, 185, 129, 0.3); }
+        .stat-card-purple:hover { border-color: #8b5cf6; box-shadow: 0 0 15px rgba(139, 92, 246, 0.3); }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body min-h-screen">
+<!-- TopNavBar -->
+<nav class="fixed top-0 w-full z-50 border-b border-white/5 bg-slate-900/60 backdrop-blur-xl flex justify-between items-center px-6 h-16 shadow-2xl shadow-black/40">
+<div class="flex items-center gap-8">
+<span class="text-xl font-bold tracking-tight text-slate-50 font-headline">Sentinel Core</span>
+<div class="hidden md:flex gap-6 items-center">
+<a class="font-manrope text-sm tracking-tight text-blue-400 border-b-2 border-blue-500 pb-2" href="#">Dashboard</a>
+<a class="font-manrope text-sm tracking-tight text-slate-400 hover:text-slate-200 transition-colors" href="#">Incidents</a>
+<a class="font-manrope text-sm tracking-tight text-slate-400 hover:text-slate-200 transition-colors" href="#">Campaigns</a>
+<a class="font-manrope text-sm tracking-tight text-slate-400 hover:text-slate-200 transition-colors" href="#">Intelligence</a>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="material-symbols-outlined text-slate-400 hover:bg-white/5 p-2 rounded-lg transition-colors">notifications</button>
+<button class="material-symbols-outlined text-slate-400 hover:bg-white/5 p-2 rounded-lg transition-colors">settings</button>
+<div class="h-8 w-8 rounded-full bg-surface-container-highest overflow-hidden">
+<img alt="Analyst profile" data-alt="professional male security analyst in high-tech office environment, cinematic lighting, sharp focus profile shot" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDD2PFFhYhOk2XuENNSz2iw6_P1XS-IS3pvV8TJqBue4DxtxchTdo_MQ6O70feo6LrwBZA3ylp2p7Gloyb0zJm-MdLbgImKqtZGXiZPd42f5iwhBdfUFztr8fIi9qNBUsqaj55BGjgkSnvowtNJdhfTsya25KV9OYdqCNv2SclvCkF6NL6-YFcrB1auX_GiBz39bwlAaRhvp2lSdTxSymGO47maQe13V-N5iGUQDBmb0OSisLdvd5hpZ5JUDtIS9ceOJmW1ruKv9LHw"/>
+</div>
+</div>
+</nav>
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-16 h-[calc(100vh-64px)] w-64 border-r border-slate-800 bg-slate-900 flex flex-col py-4 hidden md:flex">
+<div class="px-6 mb-8">
+<div class="flex items-center gap-3 mb-6">
+<div class="h-10 w-10 rounded bg-blue-600/20 flex items-center justify-center text-blue-500">
+<span class="material-symbols-outlined">shield</span>
+</div>
+<div>
+<h3 class="text-blue-500 font-bold font-headline text-sm">Tactical Ops</h3>
+<p class="text-[10px] text-slate-500 font-semibold uppercase tracking-widest">Active Session</p>
+</div>
+</div>
+<button class="w-full bg-primary-container text-on-primary-container py-2 rounded font-headline text-xs font-bold uppercase tracking-widest hover:opacity-80 transition-opacity">
+                New Investigation
+            </button>
+</div>
+<nav class="flex-1">
+<div class="px-2 space-y-1">
+<a class="flex items-center gap-3 px-4 py-3 bg-blue-600/10 text-blue-400 border-r-4 border-blue-500 transition-transform duration-200 scale-95 group" href="#">
+<span class="material-symbols-outlined">grid_view</span>
+<span class="font-manrope text-xs font-semibold uppercase tracking-widest">Overview</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 transition-transform duration-200 group" href="#">
+<span class="material-symbols-outlined">radar</span>
+<span class="font-manrope text-xs font-semibold uppercase tracking-widest">Threat Hunting</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 transition-transform duration-200 group" href="#">
+<span class="material-symbols-outlined">database</span>
+<span class="font-manrope text-xs font-semibold uppercase tracking-widest">Log Explorer</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 transition-transform duration-200 group" href="#">
+<span class="material-symbols-outlined">terminal</span>
+<span class="font-manrope text-xs font-semibold uppercase tracking-widest">Automation</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 transition-transform duration-200 group" href="#">
+<span class="material-symbols-outlined">description</span>
+<span class="font-manrope text-xs font-semibold uppercase tracking-widest">Reporting</span>
+</a>
+</div>
+</nav>
+</aside>
+<!-- Main Content -->
+<main class="md:ml-64 pt-24 px-8 pb-12 min-h-screen">
+<header class="mb-12">
+<h1 class="font-headline text-3xl font-bold tracking-tight text-slate-50">Operational Summary</h1>
+<p class="text-slate-400 mt-2 font-body">Global threat landscape and asset monitoring dashboard.</p>
+</header>
+<!-- Stat Cards Section -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+<!-- Blue Stat Card -->
+<div class="group relative bg-[#1e293b]/60 backdrop-blur-xl border border-[#334155] p-6 rounded-xl transition-all duration-300 stat-card-blue border-b-4 border-b-blue-500">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2.5 rounded-lg bg-blue-500/10 text-blue-500">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">security</span>
+</div>
+<span class="text-[11px] font-semibold text-slate-500 uppercase tracking-widest">Active nodes</span>
+</div>
+<div class="mt-auto">
+<span class="block text-[40px] font-bold font-headline text-slate-50 leading-none">1,284</span>
+<span class="text-xs font-medium text-slate-400 mt-2 block font-body">Managed endpoints</span>
+</div>
+</div>
+<!-- Red Stat Card -->
+<div class="group relative bg-[#1e293b]/60 backdrop-blur-xl border border-[#334155] p-6 rounded-xl transition-all duration-300 stat-card-red border-b-4 border-b-red-500">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2.5 rounded-lg bg-red-500/10 text-red-500">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">warning</span>
+</div>
+<span class="text-[11px] font-semibold text-slate-500 uppercase tracking-widest">Critical</span>
+</div>
+<div class="mt-auto">
+<span class="block text-[40px] font-bold font-headline text-slate-50 leading-none">42</span>
+<span class="text-xs font-medium text-slate-400 mt-2 block font-body">Unresolved alerts</span>
+</div>
+</div>
+<!-- Orange Stat Card -->
+<div class="group relative bg-[#1e293b]/60 backdrop-blur-xl border border-[#334155] p-6 rounded-xl transition-all duration-300 stat-card-orange border-b-4 border-b-orange-500">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2.5 rounded-lg bg-orange-500/10 text-orange-500">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">history</span>
+</div>
+<span class="text-[11px] font-semibold text-slate-500 uppercase tracking-widest">Pending</span>
+</div>
+<div class="mt-auto">
+<span class="block text-[40px] font-bold font-headline text-slate-50 leading-none">158</span>
+<span class="text-xs font-medium text-slate-400 mt-2 block font-body">Under review</span>
+</div>
+</div>
+<!-- Purple Stat Card -->
+<div class="group relative bg-[#1e293b]/60 backdrop-blur-xl border border-[#334155] p-6 rounded-xl transition-all duration-300 stat-card-purple border-b-4 border-b-purple-500">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2.5 rounded-lg bg-purple-500/10 text-purple-500">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">bolt</span>
+</div>
+<span class="text-[11px] font-semibold text-slate-500 uppercase tracking-widest">Success rate</span>
+</div>
+<div class="mt-auto">
+<span class="block text-[40px] font-bold font-headline text-slate-50 leading-none">99.8%</span>
+<span class="text-xs font-medium text-slate-400 mt-2 block font-body">Automated resolution</span>
+</div>
+</div>
+</div>
+<!-- Asymmetric Content Area -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+<!-- Large Focus Module -->
+<div class="lg:col-span-2 bg-surface-container-low rounded-xl overflow-hidden relative min-h-[400px] flex flex-col p-6">
+<div class="relative z-10"><h2 class="font-headline text-xl font-bold text-slate-50 mb-8">Threat Trajectory</h2>
+<div class="h-64 flex items-end gap-4 px-2 relative z-10">
+<div class="flex-1 bg-blue-500/10 rounded-t-lg h-24 border-t-2 border-blue-500 relative group cursor-pointer hover:bg-blue-500/20 transition-all"></div>
+<div class="flex-1 bg-blue-500/10 rounded-t-lg h-36 border-t-2 border-blue-500 relative group cursor-pointer hover:bg-blue-500/20 transition-all"></div>
+<div class="flex-1 bg-blue-500/10 rounded-t-lg h-48 border-t-2 border-blue-500 relative group cursor-pointer hover:bg-blue-500/20 transition-all"></div>
+<div class="flex-1 bg-blue-500/10 rounded-t-lg h-32 border-t-2 border-blue-500 relative group cursor-pointer hover:bg-blue-500/20 transition-all"></div>
+<div class="flex-1 bg-blue-500/10 rounded-t-lg h-56 border-t-2 border-blue-500 relative group cursor-pointer hover:bg-blue-500/20 transition-all"></div>
+<div class="flex-1 bg-blue-500/10 rounded-t-lg h-60 border-t-2 border-blue-500 relative group cursor-pointer hover:bg-blue-500/20 transition-all"></div>
+<div class="flex-1 bg-blue-500/10 rounded-t-lg h-44 border-t-2 border-blue-500 relative group cursor-pointer hover:bg-blue-500/20 transition-all"></div>
+</div></div>
+<div class="absolute inset-0 z-0 opacity-10 blur-[4px]">
+<img alt="World Map Overview" class="w-full h-full object-cover" data-alt="futuristic digital world map with complex network connections, data visualizations, deep blue and cyan color palette" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBFdL-Nx40SjkXVCDog_Ak6gE19ztiATCaPotXmV4-nXH1H-b4kjKVEUP2fq3aUM9rE34yjbXJ8C7z3Qi4G3xAZE9eXhceAJ8KStGWoTJHJInb7x-EH0AbF5KNrRQ5ERMO2wNecZwz1tMLoVkaeooQwlDcMcI6RlMW8vAQlaaCbEc4Dwg2YK_5clhKJ1ECEmCO7dHVjK66ef5wbJ8XreAGpwrAmp45HI1vL4vVMZhZqbFQKbmk9RVEPjHUULBmJg-KwLR4YD9DokmHH"/>
+</div>
+</div>
+<!-- Side Intelligence Panel -->
+<div class="bg-surface-container-high rounded-xl p-8 flex flex-col">
+<h2 class="font-headline text-xl font-bold text-slate-50 mb-6">Recent Vectors</h2>
+<div class="space-y-6">
+<div class="flex items-center gap-4">
+<div class="h-10 w-10 rounded-full bg-[#8b5cf6]/10 flex items-center justify-center text-[#8b5cf6]">
+<span class="material-symbols-outlined">bug_report</span>
+</div>
+<div>
+<p class="text-sm font-semibold text-slate-200">Zero-Day Vulnerability</p>
+<p class="text-[11px] text-slate-500 uppercase tracking-widest font-mono">CVE-2024-1142</p>
+</div>
+<div class="ml-auto text-[#8b5cf6] font-mono text-xs">CRITICAL</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="h-10 w-10 rounded-full bg-red-500/10 flex items-center justify-center text-red-500">
+<span class="material-symbols-outlined">public</span>
+</div>
+<div>
+<p class="text-sm font-semibold text-slate-200">IP Reputation Block</p>
+<p class="text-[11px] text-slate-500 uppercase tracking-widest font-mono">192.168.44.12</p>
+</div>
+<div class="ml-auto text-red-500 font-mono text-xs">HIGH</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="h-10 w-10 rounded-full bg-orange-500/10 flex items-center justify-center text-orange-500">
+<span class="material-symbols-outlined">person_off</span>
+</div>
+<div>
+<p class="text-sm font-semibold text-slate-200">Auth Brute Force</p>
+<p class="text-[11px] text-slate-500 uppercase tracking-widest font-mono">Admin_User_01</p>
+</div>
+<div class="ml-auto text-orange-500 font-mono text-xs">MED</div>
+</div>
+</div>
+<button class="mt-auto w-full py-4 border-t border-white/5 text-sm font-semibold text-blue-400 hover:text-blue-300 transition-colors flex items-center justify-center gap-2">
+                    View Full Intel Report
+                    <span class="material-symbols-outlined text-sm">arrow_forward</span>
+</button>
+</div>
+</div>
+</main>
+<!-- Bottom Navigation (Mobile Only) -->
+<div class="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-slate-900 border-t border-slate-800 flex items-center justify-around px-4 z-50">
+<button class="flex flex-col items-center gap-1 text-blue-400">
+<span class="material-symbols-outlined">grid_view</span>
+<span class="text-[10px] font-bold uppercase tracking-tighter">Overview</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-slate-500">
+<span class="material-symbols-outlined">radar</span>
+<span class="text-[10px] font-bold uppercase tracking-tighter">Threats</span>
+</button>
+<div class="-mt-12 h-14 w-14 bg-blue-600 rounded-full flex items-center justify-center shadow-lg shadow-blue-900/50 text-white">
+<span class="material-symbols-outlined">add</span>
+</div>
+<button class="flex flex-col items-center gap-1 text-slate-500">
+<span class="material-symbols-outlined">terminal</span>
+<span class="text-[10px] font-bold uppercase tracking-tighter">Ops</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-slate-500">
+<span class="material-symbols-outlined">settings</span>
+<span class="text-[10px] font-bold uppercase tracking-tighter">Settings</span>
+</button>
+</div>
+</body></html>

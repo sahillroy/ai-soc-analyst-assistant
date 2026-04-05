@@ -13,7 +13,6 @@ from datetime import datetime, timedelta
 import pandas as pd
 from fastapi import APIRouter, HTTPException, UploadFile, File
 
-from backend.detection.column_mapper import map_columns
 
 router = APIRouter()
 
@@ -28,54 +27,41 @@ def _data_dir() -> str:
     return d
 
 
+import io
+
 @router.post("/upload-logs")
 async def upload_logs(file: UploadFile = File(...)):
-    """
-    Accept a CSV log file upload. Validates columns, maps aliases,
-    and saves the normalised file so the pipeline can use it directly.
-    """
-    if not file.filename.endswith(".csv"):
-        raise HTTPException(status_code=400, detail="Only .csv files are supported.")
-
-    dest = os.path.join(_data_dir(), "uploaded_logs.csv")
-
-    with open(dest, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-
     try:
-        df = pd.read_csv(dest)
+        contents = await file.read()
+        from io import StringIO
+        import pandas as pd
+
+        # Try UTF-8 first, fall back to latin-1
+        try:
+            text = contents.decode("utf-8")
+        except UnicodeDecodeError:
+            text = contents.decode("latin-1")
+
+        # on_bad_lines='skip' drops malformed rows instead of crashing
+        # engine='python' handles edge cases the C parser rejects
+        try:
+            df = pd.read_csv(StringIO(text))
+        except Exception:
+            df = pd.read_csv(
+                StringIO(text),
+                on_bad_lines='skip',
+                engine='python'
+            )
+        print(f"[Sentinel] upload-logs: parsed {len(df)} rows, cols: {df.columns.tolist()}")
+
+        return {
+            "rows": len(df),
+            "columns": df.columns.tolist(),
+            "data": df.fillna("").to_dict(orient="records"),
+        }
     except Exception as e:
-        os.remove(dest)
-        raise HTTPException(status_code=400, detail=f"Could not parse CSV: {e}")
-
-    columns_detected = list(df.columns)
-
-    try:
-        mapped_df, mapping_report = map_columns(df.copy())
-    except Exception:
-        mapped_df, mapping_report = df, {}
-
-    required = {"source_ip", "destination_ip", "timestamp", "port", "bytes_transferred"}
-    missing = required - set(mapped_df.columns)
-    if missing:
-        os.remove(dest)
-        raise HTTPException(
-            status_code=400,
-            detail=f"Missing required columns: {sorted(missing)}. Detected: {columns_detected}",
-        )
-
-    try:
-        mapped_df.to_csv(dest, index=False)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save mapped CSV: {e}")
-
-    return {
-        "success":          True,
-        "rows":             len(df),
-        "columns_detected": columns_detected,
-        "columns_mapped":   mapping_report,
-        "message":          f"Uploaded {len(df)} rows successfully.",
-    }
+        print(f"[Sentinel] upload-logs ERROR: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to parse file: {str(e)}")
 
 
 @router.get("/sample-data")
@@ -100,11 +86,14 @@ def load_sample_data():
     if src:
         shutil.copy(src, dst)
         try:
-            row_count = len(pd.read_csv(dst))
+            df = pd.read_csv(dst)
+            data = df.fillna("").to_dict(orient="records")
+            row_count = len(df)
         except Exception:
             row_count = 550
+            data = []
         return {"success": True, "rows": row_count, "source": "file",
-                "message": f"Demo data loaded ({row_count} rows)"}
+                "message": f"Demo data loaded ({row_count} rows)", "data": data}
 
     # ── Synthetic generation ──────────────────────────────────────────────────
     random.seed(42)
@@ -150,4 +139,5 @@ def load_sample_data():
     demo_df = pd.DataFrame(rows)
     demo_df.to_csv(dst, index=False)
     return {"success": True, "rows": len(demo_df), "source": "generated",
-            "message": f"Demo data generated ({len(demo_df)} rows with realistic attack patterns)"}
+            "message": f"Demo data generated ({len(demo_df)} rows with realistic attack patterns)",
+            "data": demo_df.fillna("").to_dict(orient="records")}

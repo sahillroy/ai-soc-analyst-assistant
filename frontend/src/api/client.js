@@ -2,21 +2,27 @@ import axios from 'axios';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
-  timeout: 10000,
+  timeout: 30000,
 });
 
 export const getAlerts = (params = {}) => api.get('/api/alerts', { params });
 export const getStats = () => api.get('/api/stats');
 export const getStatus = () => api.get('/api/status');
-export const runAnalysis = (settings = {}) => api.post('/api/run-analysis', {}, { params: settings });
+export const runAnalysis = (settings = {}) => api.get('/api/run-analysis', { params: settings });
+export const runAnalysisWithLogs = (logs, settings = {}) =>
+  api.post('/api/run-analysis', { logs }, { params: settings });
+
+export const login = (data) => api.post('/api/auth/login', data);
+export const signup = (data) => api.post('/api/auth/signup', data);
 
 export const uploadLogs = (file) => {
-  const form = new FormData()
-  form.append('file', file)
-  return api.post('/api/upload-logs', form, {
-    headers: { 'Content-Type': 'multipart/form-data' }
-  })
-}
+  const form = new FormData();
+  form.append('file', file);
+  return api.post('/api/upload-logs', form).catch(err => {
+    console.error('Upload error:', err.response?.data);
+    throw err;
+  });
+};
 
 export const loadSampleData = () => api.get('/api/sample-data')
 

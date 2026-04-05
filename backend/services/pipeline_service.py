@@ -57,6 +57,30 @@ def _sanitise_df(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def run_pipeline_on_logs(logs: list, settings: dict):
+    """
+    Run the detection pipeline on user-uploaded logs.
+    Passes the DataFrame IN-MEMORY via config to avoid file I/O race conditions.
+    No temp file needed — uploaded data goes directly into the pipeline.
+    """
+    print(f"[Sentinel] run_pipeline_on_logs called with {len(logs)} rows")
+    try:
+        df_input = pd.DataFrame(logs)
+        print(f"[Sentinel] DataFrame built: {len(df_input)} rows, cols: {df_input.columns.tolist()}")
+        # Inject the DataFrame directly into config — pipeline.py checks for _input_df first
+        cfg = {**settings, "_input_df": df_input}
+        run_pipeline_background(cfg)
+    except Exception as e:
+        print(f"[Sentinel] run_pipeline_on_logs ERROR: {e}")
+        traceback.print_exc()
+        try:
+            from backend.core.database import db_set_pipeline_running
+            with engine.connect() as conn:
+                db_set_pipeline_running(conn, False)
+        except Exception:
+            pass
+
+
 def run_pipeline_background(config: dict = None):
     """
     Entry point for FastAPI BackgroundTasks.
@@ -66,7 +90,7 @@ def run_pipeline_background(config: dict = None):
     """
     now_iso = lambda: datetime.datetime.utcnow().isoformat()
     cfg = config or {}
-    print(f"[pipeline-service] Starting with config: {cfg}")
+    print(f"[pipeline-service] Starting with config keys: {[k for k in cfg.keys()]}")
     total_alerts_written = 0
 
     try:

@@ -24,8 +24,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from backend.core.database import engine, check_db, _get_column_names
+from backend.models.user import init_users_table
 
 # ── Route modules ─────────────────────────────────────────────────────────────
+from backend.api.routes.auth     import router as auth_router
 from backend.api.routes.alerts   import router as alerts_router
 from backend.api.routes.analysis import router as analysis_router
 from backend.api.routes.ingestion import router as ingestion_router
@@ -34,6 +36,9 @@ from backend.api.routes.reports  import router as reports_router
 # ── App factory ───────────────────────────────────────────────────────────────
 
 app = FastAPI(title="SOC AI Analyst API", version="3.0.0")
+
+# Initialize users table separately to keep it isolated from core database.py
+init_users_table(engine)
 
 app.add_middleware(
     CORSMiddleware,
@@ -54,6 +59,7 @@ app.add_middleware(
 )
 
 # ── Mount all routers under /api prefix ───────────────────────────────────────
+app.include_router(auth_router,     prefix="/api/auth")
 app.include_router(alerts_router,   prefix="/api")
 app.include_router(analysis_router, prefix="/api")
 app.include_router(ingestion_router, prefix="/api")

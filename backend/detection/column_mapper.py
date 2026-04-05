@@ -11,13 +11,27 @@ def map_columns(df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, str]]:
     """
     # Define mapping rules. Key = standard_name, Value = list of accepted aliases
     MAPPING_RULES = {
-        'source_ip': ['src_ip', 'src', 'source', 'sourceip', 'srcip'],
-        'destination_ip': ['dst_ip', 'dest_ip', 'dst', 'destination', 'destip', 'dstip'],
-        'bytes_transferred': ['bytes', 'bytessent', 'bytes_sent', 'size', 'length'],
-        'failed_logins': ['failures', 'login_failures', 'failedlogins', 'failed', 'bad_logins'],
-        'port': ['dst_port', 'dport', 'dstport', 'dest_port'],
+        'source_ip': [
+            'src_ip', 'src', 'source', 'sourceip', 'srcip',
+            'src_addr', 'source_addr', 'ip_src', 'ipv4_src',
+            'attacker_ip', 'client_ip', 'from_ip', 'origin_ip'
+        ],
+        'destination_ip': [
+            'dst_ip', 'dest_ip', 'dst', 'destination', 'destip', 'dstip',
+            'dst_addr', 'dest_addr', 'ip_dst', 'ipv4_dst',
+            'target_ip', 'server_ip', 'remote_ip', 'to_ip'
+        ],
+        'bytes_transferred': [
+            'bytes', 'bytessent', 'bytes_sent', 'size', 'length',
+            'pkt_bytes', 'packet_bytes', 'total_bytes', 'payload'
+        ],
+        'failed_logins': [
+            'failures', 'login_failures', 'failedlogins', 'failed', 'bad_logins',
+            'auth_fail', 'auth_failures', 'failed_auth', 'login_attempts'
+        ],
+        'port': ['dst_port', 'dport', 'dstport', 'dest_port', 'lport'],
         'timestamp': ['time', 'datetime', 'date', 'ts', 'timecreated', 'start'],
-        'protocol': ['proto']
+        'protocol': ['proto', 'l4_proto', 'transport', 'conn_proto']
     }
 
     report = {}

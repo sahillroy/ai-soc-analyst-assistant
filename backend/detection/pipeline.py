@@ -86,14 +86,8 @@ def _coerce_numeric_columns(df: pd.DataFrame) -> pd.DataFrame:
 # ── Pipeline ──────────────────────────────────────────────────────────────────
 
 def run_pipeline(input_path=None, config=None):
-    if input_path is None:
-        # Use uploaded file if it exists, else fall back to demo data
-        uploaded = _os.path.join(_PROJECT_ROOT, "data", "uploaded_logs.csv")
-        default  = _os.path.join(_PROJECT_ROOT, "data", "logs.csv")
-        input_path = uploaded if _os.path.exists(uploaded) else default
-        print(f"[pipeline] Input file: {input_path}")
-
     cfg = config or {}
+
     bruteforce_threshold  = int(cfg.get("bruteforce_threshold",  5))
     port_scan_threshold   = int(cfg.get("port_scan_threshold",   5))
     traffic_spike_z_score = float(cfg.get("traffic_spike_z_score", 3.0))
@@ -105,21 +99,38 @@ def run_pipeline(input_path=None, config=None):
     print(f"    traffic_spike_z_score={traffic_spike_z_score}, ml_contamination={ml_contamination}")
     print(f"    critical_assets={critical_assets}")
 
-    # Step 1 — Parse and normalise columns BEFORE ML detection
-    # This handles uploaded files with non-standard column names
-    # (e.g. 'src_ip' instead of 'source_ip', 'bytes' instead of 'bytes_transferred')
+    # Step 1 — Load data: in-memory DataFrame takes priority over file I/O
     try:
-        from backend.detection.log_parser import parse_logs
         from backend.detection.column_mapper import map_columns
-        raw_df = parse_logs(input_path)
+
+        # PRIORITY 1: in-memory DataFrame from uploaded logs
+        if "_input_df" in cfg:
+            raw_df = cfg["_input_df"].copy()
+            print(f"[1a] Using in-memory uploaded DataFrame: {len(raw_df)} rows")
+
+        # PRIORITY 2: file fallback
+        else:
+            if input_path is None:
+                uploaded = _os.path.join(_PROJECT_ROOT, "data", "uploaded_logs.csv")
+                default  = _os.path.join(_PROJECT_ROOT, "data", "logs.csv")
+                input_path = uploaded if _os.path.exists(uploaded) else default
+            print(f"[1a] Loading from file: {input_path}")
+            from backend.detection.log_parser import parse_logs
+            raw_df = parse_logs(input_path)
+
         raw_df, mapping_report = map_columns(raw_df)
         if mapping_report:
-            print(f"[1a] Column mapping applied: {mapping_report}")
-        # Run anomaly detection on the already-loaded DataFrame
+            print(f"[1b] Column mapping: {mapping_report}")
         df = run_anomaly_detection(raw_df, contamination=ml_contamination)
+
     except Exception as _parse_err:
-        print(f"[WARN] log_parser/column_mapper failed ({_parse_err}), falling back to direct read")
+        print(f"[WARN] Pipeline load failed ({_parse_err}), falling back to file")
+        if input_path is None:
+            uploaded = _os.path.join(_PROJECT_ROOT, "data", "uploaded_logs.csv")
+            default  = _os.path.join(_PROJECT_ROOT, "data", "logs.csv")
+            input_path = uploaded if _os.path.exists(uploaded) else default
         df = run_anomaly_detection(input_path, contamination=ml_contamination)
+
     print(f"[1] Anomaly detection done. Rows: {len(df)}")
 
     # Step 2 — Rule-based detection
@@ -131,8 +142,6 @@ def run_pipeline(input_path=None, config=None):
     print(f"[2] Rules applied.")
 
     # Step 3 — Coerce bool columns to int RIGHT AFTER rule engine runs.
-    #           Must happen before severity engine (.astype(int) there is fine
-    #           but the filter below uses == 1 / == True so type must be stable).
     df = _coerce_bool_columns(df)
     print(f"[3] Bool columns coerced to int.")
 
@@ -195,21 +204,15 @@ def enrich_alerts(df):
         row = row.copy()
         row['mitre_technique'] = mitre
 
-        # ── LLM summary ──────────────────────────────────────────────────────
+        # ── Local Rule-Based Summary ─────────────────────────────────────────
         try:
-            llm_output = generate_llm_summary(row)
-            summaries.append(llm_output.get("summary", ""))
-            recommendations.append(llm_output.get("action", ""))
-        except Exception as e:
-            print(f"    [!] LLM failed: {e}")
-            try:
-                desc, rec = generate_summary(row)
-                summaries.append(desc)
-                recommendations.append(rec)
-            except Exception as e2:
-                print(f"    [!] Fallback summary failed: {e2}")
-                summaries.append("")
-                recommendations.append("")
+            desc, rec = generate_summary(row)
+            summaries.append(desc)
+            recommendations.append(rec)
+        except Exception as e2:
+            print(f"    [!] Fallback summary failed: {e2}")
+            summaries.append("No summary available.")
+            recommendations.append("Manual investigation required.")
 
         # ── SOC playbook ─────────────────────────────────────────────────────
         try:
@@ -227,7 +230,6 @@ def enrich_alerts(df):
             print(f"    [!] IP check failed: {e}")
             intel = {"country": "Unknown", "is_suspicious": False}
         countries.append(intel.get('country', 'Unknown') or 'Unknown')
-        # Store as int immediately — never store Python bool in this list
         ip_flags.append(1 if intel.get('is_suspicious', False) else 0)
 
         # ── Escalation ───────────────────────────────────────────────────────
@@ -258,5 +260,21 @@ def enrich_alerts(df):
     df['status']              = "New"
     df['ip_country']          = countries
     df['ip_suspicious']       = ip_flags  # already int
+
+    # ── AI Aggregated Tactical Summary ──────────────────────────────────
+    try:
+        from backend.enrichment.llm_summarizer import generate_tactical_summary
+        tactical_abstract = generate_tactical_summary(df.to_dict('records'))
+        
+        # Prepend to High/Critical alerts so it shows in the "AI Tactical Summary" box
+        def prepend_tactical(row):
+            if row['severity'] in ['High', 'Critical']:
+                return f"{tactical_abstract}\n\n[Analyst Detail] {row['incident_summary']}"
+            return row['incident_summary']
+
+        df['incident_summary'] = df.apply(prepend_tactical, axis=1)
+        print(f"[AI] Successfully injected aggregated tactical summary into {len(df[df['severity'].isin(['High','Critical'])])} alerts.")
+    except Exception as e:
+        print(f"[!] Aggregated tactical summary failed: {e}")
 
     return df

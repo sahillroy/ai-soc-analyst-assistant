@@ -123,14 +123,71 @@ Timestamp      : {row.get('timestamp', 'Unknown')}"""
         return result
 
     except json.JSONDecodeError:
-        return {
-            "summary": "LLM returned malformed JSON. Raw output could not be parsed.",
-            "intent": "Unknown",
-            "action": "Manual investigation required.",
-        }
+        raise Exception("LLM call failed: Malformed JSON output")
     except Exception as e:
-        return {
-            "summary": f"LLM call failed: {type(e).__name__}.",
-            "intent": "Unknown",
-            "action": "Manual investigation required.",
-        }
+        raise Exception(f"LLM call failed: {type(e).__name__}")
+
+def generate_tactical_summary(alerts_data: list) -> str:
+    """
+    Generates a single global AI Tactical Summary for the entire dataset.
+    Aggregates indicators and makes ONE LLM call to provide dataset-wide context.
+    """
+    if not alerts_data:
+        return "No alerts to summarize."
+
+    from collections import Counter
+    
+    # 1. Extract Aggregated Telemetry for Prompt context
+    total = len(alerts_data)
+    ips = Counter([d.get("source_ip") for d in alerts_data if d.get("source_ip")])
+    types = Counter([d.get("alert_type") for d in alerts_data if d.get("alert_type")])
+    high_risk = len([d for d in alerts_data if d.get("severity") in ["High", "Critical"]])
+    
+    top_ips = ", ".join([f"{ip} ({count})" for ip, count in ips.most_common(3)])
+    top_types = ", ".join([f"{t} ({c})" for t, c in types.most_common(3)])
+
+    prompt = f"""You are a Lead SOC Analyst. Summarize the following tactical situation for the security dashboard.
+
+    Dataset Metrics:
+    - Total Alerts: {total}
+    - High/Critical Threats: {high_risk}
+    - Top Offending IPs: {top_ips}
+    - Primary Threat Vectors: {top_types}
+
+    Respond with exactly 2 sentences of high-level analyst context.
+    Focus on the severity, the primary actor source, and the immediate impact.
+    No JSON, just the summary text."""
+
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": "You are a concise cybersecurity SOC lead summary generator."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.3,
+            max_tokens=150,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"[!] Tactical LLM failed: {e}. Falling back to rule-based.")
+        return generate_rule_based_tactical_summary(alerts_data)
+
+def generate_rule_based_tactical_summary(data: list) -> str:
+    """
+    Fallback generator for a dataset-level tactical summary if LLM batch processing fails.
+    Analyzes list of alert dicts for top IPs, most frequent alerts to build a rule-based abstract.
+    """
+    if not data:
+        return "No alerts to summarize."
+    
+    from collections import Counter
+    
+    total_alerts = len(data)
+    ips = Counter([d.get("source_ip") for d in data if d.get("source_ip")])
+    alerts = Counter([d.get("alert_type") for d in data if d.get("alert_type")])
+    
+    top_ip = ips.most_common(1)[0][0] if ips else "Unknown"
+    top_alert = alerts.most_common(1)[0][0] if alerts else "Unknown"
+    
+    return f"Tactical Overview: Dataset contains {total_alerts} active threats. The most frequent indicator is '{top_alert}'. Primary threat actor origin identified at IPv4 {top_ip}."

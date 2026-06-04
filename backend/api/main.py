@@ -55,6 +55,7 @@ app.add_middleware(
     allow_origin_regex=r"https://.*\.vercel\.app",
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
     allow_credentials=False,
 )
 

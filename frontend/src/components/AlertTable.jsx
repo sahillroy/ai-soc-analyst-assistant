@@ -38,59 +38,47 @@ export default function AlertTable({ alerts = [], onRowClick, onSelectAlert }) {
     return num.toFixed(2);
   };
 
-  const exportCSV = () => {
-    const headers = [
-      'incident_id', 'timestamp', 'source_ip', 'destination_ip', 'port',
-      'alert_type', 'severity', 'risk_score', 'confidence', 'campaign_id',
-      'escalation', 'mitre_technique', 'description', 'recommendation'
-    ];
+  const handleExportCSV = async () => {
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/report/export/csv`,
+        { method: 'GET' }
+      )
+      if (!response.ok) throw new Error('Export failed')
+      const blob = await response.blob()
+      const url  = window.URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      a.download = 'soc_alerts_export.csv'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('CSV export failed:', err)
+    }
+  }
 
-    const escapeCsv = (str) => {
-      if (str == null) return '';
-      const stringified = String(str);
-      if (stringified.includes(',') || stringified.includes('"') || stringified.includes('\n')) {
-        return `"${stringified.replace(/"/g, '""')}"`;
-      }
-      return stringified;
-    };
-
-    const csvRows = [headers.map(escapeCsv).join(',')];
-
-    sorted.forEach(a => {
-      const row = [
-        a.incident_id,
-        a.timestamp,
-        a.source_ip,
-        a.destination_ip,
-        a.port,
-        a.alert_type,
-        a.severity,
-        a.risk_score,
-        formatConfidence(a.confidence),
-        a.campaign_id,
-        a.escalation ? 'true' : 'false',
-        a.mitre_technique,
-        a.incident_summary,
-        a.recommended_action
-      ];
-      csvRows.push(row.map(escapeCsv).join(','));
-    });
-
-    const csvContent = csvRows.join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    
-    const now = new Date();
-    const ts = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
-    
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `soc_alerts_${ts}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
+  const handleExportExcel = async () => {
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/report/export/xlsx`,
+        { method: 'GET' }
+      )
+      if (!response.ok) throw new Error('Export failed')
+      const blob = await response.blob()
+      const url  = window.URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      a.download = 'soc_alerts_export.xlsx'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('Excel export failed:', err)
+    }
+  }
 
   const getSeverityStyle = (severity) => {
     switch (severity) {
@@ -126,9 +114,15 @@ export default function AlertTable({ alerts = [], onRowClick, onSelectAlert }) {
           </select>
           <button 
             style={{ padding: '8px 16px', background: '#3b82f6', color: '#ffffff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 500 }}
-            onClick={exportCSV}
+            onClick={handleExportCSV}
           >
             Export CSV
+          </button>
+          <button 
+            style={{ padding: '8px 16px', background: '#10b981', color: '#ffffff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 500 }}
+            onClick={handleExportExcel}
+          >
+            Export Excel
           </button>
         </div>
       </div>

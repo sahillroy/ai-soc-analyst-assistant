@@ -17,7 +17,7 @@
     "react-dom": "^18.2.0",
     "react-is": "^19.2.4",
     "react-router-dom": "^6.30.3",
-    "react-simple-maps": "^2.3.0",
+    "react-simple-maps": "^3.0.0",
     "recharts": "^3.8.1"
   },
   "devDependencies": {

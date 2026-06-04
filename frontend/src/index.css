@@ -1,5 +1,7 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: #0f172a; }
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: #0f172a; }
+body {
+  background: #0b1326;
+  color: #dae2fd;
+  color-scheme: dark;
+}
 @keyframes spin { to { transform: rotate(360deg); } }

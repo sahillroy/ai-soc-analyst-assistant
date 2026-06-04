@@ -1,5 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  sendPasswordResetEmail,
+} from 'firebase/auth';
+import { auth, googleProvider, githubProvider } from '../firebase';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -12,6 +18,8 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showForgot, setShowForgot] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetSent, setResetSent] = useState(false);
 
   // ── Remember Me: pre-fill on mount ────────────────────────────────────────
   useEffect(() => {
@@ -19,49 +27,65 @@ export default function Login() {
     if (saved) { setEmail(saved); setRememberMe(true); }
   }, []);
 
-  // ── Handlers ───────────────────────────────────────────────────────────────
-  const handleSubmit = (e) => {
+  // ── Email / Password Login ─────────────────────────────────────────────────
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
-    setTimeout(() => {
-      if (email === 'sahilroy7007@gmail.com' && password === 'sahilroy') {
-        localStorage.setItem('soc_auth_token', 'authenticated');
-        localStorage.setItem('soc_user', JSON.stringify({
-          name: 'Sahil Roy', email, provider: 'local', avatar: 'SR'
-        }));
-        if (rememberMe) localStorage.setItem('soc_remember', email);
-        else localStorage.removeItem('soc_remember');
-        navigate('/dashboard', { replace: true });
-      } else {
-        setLoading(false);
-        setError('Invalid credentials. Use sahilroy7007@gmail.com / sahilroy');
-      }
-    }, 800);
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      if (rememberMe) localStorage.setItem('soc_remember', email);
+      else localStorage.removeItem('soc_remember');
+      navigate('/dashboard', { replace: true });
+    } catch (err) {
+      setError('Invalid credentials. Please check your email and password.');
+      setLoading(false);
+    }
   };
 
-  const handleGoogleLogin = () => {
+  // ── Google OAuth ────────────────────────────────────────────────────────────
+  const handleGoogleLogin = async () => {
+    setError('');
     setLoading(true);
-    setTimeout(() => {
-      localStorage.setItem('soc_auth_token', 'google_demo');
-      localStorage.setItem('soc_user', JSON.stringify({
-        name: 'SOC Analyst', email: 'analyst@sentinel.local',
-        provider: 'google', avatar: 'SA'
-      }));
+    try {
+      await signInWithPopup(auth, googleProvider);
       navigate('/dashboard', { replace: true });
-    }, 1200);
+    } catch (err) {
+      setError('Google sign-in failed. Please try again.');
+      setLoading(false);
+    }
   };
 
-  const handleGithubLogin = () => {
+  // ── GitHub OAuth ────────────────────────────────────────────────────────────
+  const handleGithubLogin = async () => {
+    setError('');
     setLoading(true);
-    setTimeout(() => {
-      localStorage.setItem('soc_auth_token', 'github_demo');
-      localStorage.setItem('soc_user', JSON.stringify({
-        name: 'SOC Analyst', email: 'analyst@sentinel.local',
-        provider: 'github', avatar: 'SA'
-      }));
+    try {
+      await signInWithPopup(auth, githubProvider);
       navigate('/dashboard', { replace: true });
-    }, 1200);
+    } catch (err) {
+      setError('GitHub sign-in failed. Please try again.');
+      setLoading(false);
+    }
+  };
+
+  // ── Forgot Password ─────────────────────────────────────────────────────────
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!resetEmail.trim()) {
+      setError('Please enter your email address.');
+      return;
+    }
+    setLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, resetEmail.trim());
+      setResetSent(true);
+    } catch (err) {
+      setError('Could not send reset email. Check the address and try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -147,7 +171,7 @@ export default function Login() {
                   <span className="material-symbols-outlined text-error text-xl" data-icon="warning">warning</span>
                 </div>
                 <div>
-                  <p className="text-sm font-bold text-white mb-0.5">Invalid credentials</p>
+                  <p className="text-sm font-bold text-white mb-0.5">Authentication Error</p>
                   <p className="text-[11px] text-error/80 font-medium">{error}</p>
                 </div>
               </div>
@@ -159,37 +183,59 @@ export default function Login() {
                 <div className="text-4xl mb-5">🔑</div>
                 <h3 className="font-headline text-2xl font-bold text-on-surface mb-2">Reset your password</h3>
                 <p className="text-outline text-sm mb-8">Enter your email and we'll send a reset link.</p>
-                <div className="space-y-2 mb-6 text-left">
-                  <label className="text-xs font-bold uppercase tracking-widest text-outline-variant px-1" htmlFor="reset-email">Analyst Identifier</label>
-                  <div className="relative group">
-                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-outline group-focus-within:text-primary transition-colors">
-                      <span className="material-symbols-outlined text-xl" data-icon="person">person</span>
+
+                {resetSent ? (
+                  /* ── Success state ── */
+                  <div className="flex flex-col items-center gap-4">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-tertiary/10 border border-tertiary/20">
+                      <span className="material-symbols-outlined text-tertiary text-3xl">mark_email_read</span>
                     </div>
-                    <input
-                      className="w-full bg-surface-container-lowest border border-outline-variant/20 rounded-xl pl-12 pr-4 py-4 text-on-surface text-sm transition-all focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 placeholder:text-outline/40"
-                      id="reset-email"
-                      placeholder="email@sentinel.hq"
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                    />
+                    <p className="text-on-surface font-semibold text-sm">Reset link sent!</p>
+                    <p className="text-outline text-xs max-w-[280px]">
+                      Check your inbox at <span className="text-primary font-medium">{resetEmail}</span>. Follow the link to reset your password.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => { setShowForgot(false); setResetSent(false); setResetEmail(''); setError(''); }}
+                      className="text-primary text-sm font-semibold cursor-pointer hover:text-primary/80 transition-colors mt-2"
+                    >
+                      ← Back to login
+                    </button>
                   </div>
-                </div>
-                <button
-                  className="w-full rounded-xl bg-primary py-4 text-sm font-extrabold tracking-widest uppercase text-white shadow-xl shadow-primary/20 transition-all hover:translate-y-[-1px] hover:shadow-primary/30 active:scale-[0.98] mb-4"
-                  type="button"
-                  onClick={() => setShowForgot(false)}
-                >
-                  Send Reset Link
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowForgot(false)}
-                  className="text-primary text-sm font-semibold cursor-pointer hover:text-primary/80 transition-colors"
-                >
-                  ← Back to login
-                </button>
-                <p className="text-[11px] text-outline/40 mt-4">(Demo mode — no email will be sent)</p>
+                ) : (
+                  /* ── Email input form ── */
+                  <form onSubmit={handleForgotPassword} className="space-y-2 mb-6 text-left">
+                    <label className="text-xs font-bold uppercase tracking-widest text-outline-variant px-1" htmlFor="reset-email">Analyst Identifier</label>
+                    <div className="relative group mb-6">
+                      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-outline group-focus-within:text-primary transition-colors">
+                        <span className="material-symbols-outlined text-xl" data-icon="person">person</span>
+                      </div>
+                      <input
+                        className="w-full bg-surface-container-lowest border border-outline-variant/20 rounded-xl pl-12 pr-4 py-4 text-on-surface text-sm transition-all focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 placeholder:text-outline/40"
+                        id="reset-email"
+                        placeholder="email@sentinel.hq"
+                        type="email"
+                        value={resetEmail}
+                        onChange={(e) => setResetEmail(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <button
+                      className="w-full rounded-xl bg-primary py-4 text-sm font-extrabold tracking-widest uppercase text-white shadow-xl shadow-primary/20 transition-all hover:translate-y-[-1px] hover:shadow-primary/30 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                      type="submit"
+                      disabled={loading}
+                    >
+                      {loading ? 'Sending...' : 'Send Reset Link'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setShowForgot(false); setError(''); }}
+                      className="w-full text-primary text-sm font-semibold cursor-pointer hover:text-primary/80 transition-colors mt-3 block text-center"
+                    >
+                      ← Back to login
+                    </button>
+                  </form>
+                )}
               </div>
             ) : (
               /* ── Login Form ──────────────────────────────────────────────── */
@@ -220,7 +266,7 @@ export default function Login() {
                     <label className="text-xs font-bold uppercase tracking-widest text-outline-variant" htmlFor="password">Security Key</label>
                     <button
                       type="button"
-                      onClick={() => setShowForgot(true)}
+                      onClick={() => { setShowForgot(true); setResetEmail(email); setError(''); }}
                       className="text-[11px] font-bold text-primary hover:text-primary-container transition-colors uppercase tracking-tight"
                     >
                       Lost Key?

@@ -1,60 +1,28 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { login as apiLogin, signup as apiSignup } from '../api/client';
+import { createContext, useContext, useEffect, useState } from "react";
+import { onAuthStateChanged, signOut as firebaseSignOut } from "firebase/auth";
+import { auth } from "../firebase";
 
-const AuthContext = createContext();
+const AuthContext = createContext(null);
 
-export const useAuth = () => useContext(AuthContext);
-
-export const AuthProvider = ({ children }) => {
-  const [token, setToken] = useState(localStorage.getItem('soc_auth_token'));
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+export function AuthProvider({ children }) {
+  const [user, setUser] = useState(undefined); // undefined = loading, null = logged out
 
   useEffect(() => {
-    if (token) {
-      localStorage.setItem('soc_auth_token', token);
-    } else {
-      localStorage.removeItem('soc_auth_token');
-    }
-  }, [token]);
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      setUser(firebaseUser ?? null);
+    });
+    return unsubscribe; // cleanup listener on unmount
+  }, []);
 
-  const login = async (email, password) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await apiLogin({ email, password });
-      setToken(response.data.access_token);
-      return true;
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Login failed');
-      return false;
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const signup = async (email, password) => {
-    setLoading(true);
-    setError(null);
-    try {
-      await apiSignup({ email, password });
-      // Auto-login after signup
-      return await login(email, password);
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Signup failed');
-      return false;
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const logout = () => {
-    setToken(null);
-  };
+  const signOut = () => firebaseSignOut(auth);
 
   return (
-    <AuthContext.Provider value={{ token, loading, error, login, signup, logout, isAuthenticated: !!token }}>
+    <AuthContext.Provider value={{ user, signOut }}>
       {children}
     </AuthContext.Provider>
   );
-};
+}
+
+export function useAuth() {
+  return useContext(AuthContext);
+}

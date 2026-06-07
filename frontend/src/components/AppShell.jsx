@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getAlerts, getStatus, runAnalysis, runAnalysisWithLogs, uploadLogs, loadSampleData } from '../api/client';
 import { useNavigate, useLocation, Routes, Route, Navigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import OverviewPage from '../pages/OverviewPage';
 import IncidentsPage from '../pages/IncidentsPage';
 import CampaignsPage from '../pages/CampaignsPage';
@@ -14,6 +15,7 @@ import ReportingPage from '../pages/ReportingPage';
 export default function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, signOut } = useAuth();
 
   const [selectedSeverity, setSelectedSeverity] = useState(null);
   const [selectedCampaign, setSelectedCampaign] = useState(null);
@@ -134,8 +136,8 @@ export default function AppShell() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('soc_auth_token');
+  const handleLogout = async () => {
+    await signOut();
     navigate('/');
   };
 
@@ -184,7 +186,9 @@ export default function AppShell() {
           <button className="material-symbols-outlined text-slate-400 hover:text-slate-200">notifications</button>
           
           <div className="flex items-center gap-3 pl-4 border-l border-[#1e293b]">
-            <div className="text-xs text-slate-400 hidden sm:block">analyst@sentinel.local</div>
+            <div className="text-xs text-slate-400 hidden sm:block" title={user?.email}>
+              {user?.displayName || user?.email || 'analyst@sentinel.local'}
+            </div>
             <button onClick={handleLogout} title="Sign out" className="material-symbols-outlined text-slate-400 hover:text-red-400 transition-colors" style={{ fontSize: 20 }}>logout</button>
           </div>
         </div>
@@ -197,7 +201,9 @@ export default function AppShell() {
             <span className="material-symbols-outlined text-blue-500" style={{ fontSize: 18 }}>security</span>
           </div>
           <div>
-            <div className="text-blue-500 font-bold text-xs uppercase tracking-wider">Tactical Ops</div>
+            <div className="text-blue-500 font-bold text-xs uppercase tracking-wider">
+              {user?.displayName?.toUpperCase() || 'ANALYST'}
+            </div>
             <div className="text-[9px] text-slate-500 font-semibold uppercase tracking-widest">{running ? 'Processing...' : 'Active Session'}</div>
           </div>
         </div>

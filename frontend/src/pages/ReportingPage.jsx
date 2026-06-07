@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import {
-  Shield, Lock, AlertTriangle, CheckCircle,
+import { Shield, Lock, AlertTriangle, CheckCircle,
   Download, FileText, Printer, TrendingUp, Clock, Activity, User
 } from 'lucide-react';
 import { getAlerts, exportReportCSV } from '../api/client';
 import { countBySeverity } from '../services/alertUtils';
+import { useAuth } from '../context/AuthContext';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function parseMitre(raw) {
@@ -103,6 +103,7 @@ export default function ReportingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
   const [avgMTTR]             = useState(() => (Math.random() * 3 + 1).toFixed(1));
+  const { user }              = useAuth();
   const generated = new Date().toLocaleString('en-IN', {
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit', hour12: true,
@@ -199,7 +200,7 @@ export default function ReportingPage() {
             {[
               { Icon: Clock,    label: 'Generated', value: generated },
               { Icon: Activity, label: 'Period',    value: 'Last 24 hours' },
-              { Icon: User,     label: 'Analyst',   value: 'Sahil Roy' },
+              { Icon: User,     label: 'Analyst',   value: user?.displayName || user?.email || 'analyst@sentinel.local' },
             ].map(({ Icon, label, value }) => (
               <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <Icon size={12} color="#64748b" />
